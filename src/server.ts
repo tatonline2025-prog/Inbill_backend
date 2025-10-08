@@ -19,16 +19,10 @@ const allowedOrigins = [
 const app = express();
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // cho phép các request không có origin (ví dụ từ Postman)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: allowedOrigins,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
