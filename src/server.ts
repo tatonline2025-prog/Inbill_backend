@@ -13,7 +13,7 @@ connectDB();
 
 const allowedOrigins = [
   "http://localhost:3000", // frontend dev
-  "https://hoadon.dvtienich.vn", // frontend production
+  "https://inbill.dvtienich.vn", // frontend production
 ];
 
 const app = express();
