@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as XLSX from "xlsx";
-import Invoice from "../models/invoiceModel";
+import Invoice, { IInvoice } from "../models/invoiceModel";
+import { IUser } from "../models/userModel";
 
 export const previewExcel = async (req: Request, res: Response) => {
   const now = new Date();
@@ -106,7 +107,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
     // 1. Lấy tất cả dữ liệu hóa đơn từ database
     // Dùng lean() để lấy object thuần túy, nhanh hơn
-    const invoices = await Invoice.find({}).lean();
+    const invoices: IInvoice[] = await Invoice.find({}).populate("assignedTo", "fullName email").lean();
 
     if (invoices.length === 0) {
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
@@ -116,11 +117,18 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     const dataForExcel = invoices.map((invoice) => ({
       "Số Hóa Đơn": invoice.invoiceNumber,
       "Tên Khách Hàng": invoice.customerName,
-      "Kỳ Thanh Toán": invoice.billing_period,
+      "Số điện thoại": invoice.customerPhone,
       "Địa Chỉ": invoice.customerAddress,
+      "Kỳ Thanh Toán": invoice.billing_period,
       "Tổng Tiền": invoice.totalAmount,
+      "Nhân viên phụ trách":
+        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
+          ? (invoice.assignedTo as IUser).fullName
+          : "",
+
       "Trạng Thái Thu Hộ": invoice.collectionStatus,
       "Trạng Thái In": invoice.printStatus,
+      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
     }));
 
     // 3. Tạo một workbook và worksheet mới từ dữ liệu JSON
@@ -130,13 +138,16 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
 
     // Tùy chỉnh độ rộng cột (tùy chọn)
     worksheet["!cols"] = [
-      { wch: 20 }, // Số Hóa Đơn
-      { wch: 30 }, // Tên Khách Hàng
-      { wch: 15 }, // Kỳ Thanh Toán
-      { wch: 50 }, // Địa Chỉ
-      { wch: 15 }, // Tổng Tiền
-      { wch: 20 }, // Trạng Thái Thu Hộ
-      { wch: 20 }, // Trạng Thái In
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
     ];
 
     // 4. Ghi workbook vào một buffer (dữ liệu nhị phân)
@@ -146,6 +157,74 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="danh-sach-hoa-don-${Date.now()}.xlsx"`);
 
+    // 6. Gửi buffer về cho client
+    res.send(buffer);
+  } catch (error) {
+    console.error("Lỗi khi xuất file Excel:", error);
+    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+  }
+};
+
+export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) => {
+  const dateParam = req.query.date as string | undefined;
+
+  const startOfDay = new Date(dateParam!);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(dateParam!);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  try {
+    // 1. Lấy tất cả dữ liệu hóa đơn từ database
+    // Dùng lean() để lấy object thuần túy, nhanh hơn
+    const invoices: IInvoice[] = await Invoice.find({
+      collectionStatus: "collected",
+      collectionDate: { $gte: startOfDay, $lte: endOfDay },
+    })
+      .populate("assignedTo", "fullName email")
+      .lean();
+    if (invoices.length === 0) {
+      return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
+    }
+    // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
+    const dataForExcel = invoices.map((invoice) => ({
+      "Số Hóa Đơn": invoice.invoiceNumber,
+      "Tên Khách Hàng": invoice.customerName,
+      "Số điện thoại": invoice.customerPhone,
+      "Địa Chỉ": invoice.customerAddress,
+      "Kỳ Thanh Toán": invoice.billing_period,
+      "Tổng Tiền": invoice.totalAmount,
+      "Nhân viên phụ trách":
+        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
+          ? (invoice.assignedTo as IUser).fullName
+          : "",
+
+      "Trạng Thái Thu Hộ": invoice.collectionStatus,
+      "Trạng Thái In": invoice.printStatus,
+      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+    }));
+    // 3. Tạo một workbook và worksheet mới từ dữ liệu JSON
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
+    // Tùy chỉnh độ rộng cột (tùy chọn)
+    worksheet["!cols"] = [
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+    ];
+    // 4. Ghi workbook vào một buffer (dữ liệu nhị phân)
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+    // 5. Thiết lập HTTP Headers để trình duyệt hiểu đây là một file cần tải về
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="danh-sach-hoa-don-${Date.now()}.xlsx"`);
     // 6. Gửi buffer về cho client
     res.send(buffer);
   } catch (error) {
@@ -170,7 +249,15 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     if (field === "printStatus") {
       invoice.printStatus = invoice.printStatus === "printed" ? "not_printed" : "printed";
     } else if (field === "collectionStatus") {
-      invoice.collectionStatus = invoice.collectionStatus === "collected" ? "not_collected" : "collected";
+      if (invoice.collectionStatus === "collected") {
+        // Nếu đang là "đã thu" -> chuyển thành "chưa thu"
+        invoice.collectionStatus = "not_collected";
+        invoice.collectionDate = null; // Xóa ngày thu
+      } else {
+        // Nếu đang là "chưa thu" -> chuyển thành "đã thu"
+        invoice.collectionStatus = "collected";
+        invoice.collectionDate = new Date(); // Ghi ngày thu hiện tại
+      }
     }
 
     await invoice.save();

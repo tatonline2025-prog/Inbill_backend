@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
+import { IUser } from "./userModel";
 
 const invoiceSchema = new mongoose.Schema(
   {
     invoiceNumber: { type: String, required: true },
     customerName: { type: String, required: true },
+    customerPhone: { type: String },
     billing_period: { type: String, required: true },
     customerAddress: { type: String, default: "" },
     totalAmount: { type: String, required: true },
@@ -34,3 +36,20 @@ invoiceSchema.index({ invoiceNumber: 1, billing_period: 1 }, { unique: true });
 
 const Invoice = mongoose.model("Invoice", invoiceSchema);
 export default Invoice;
+
+export interface IInvoice {
+  _id: mongoose.Types.ObjectId;
+  invoiceNumber: string;
+  customerName: string;
+  customerPhone?: string | null; // ✅ cho phép null
+  billing_period: string;
+  customerAddress?: string | null;
+  totalAmount: string;
+  collectionStatus: "collected" | "not_collected";
+  printStatus: "printed" | "not_printed";
+  issueDate: Date;
+  collectionDate?: Date | null;
+  assignedTo?: mongoose.Types.ObjectId | IUser | null;
+  uploadedBy?: mongoose.Types.ObjectId | IUser | null;
+  uploadFileId?: mongoose.Types.ObjectId | null;
+}

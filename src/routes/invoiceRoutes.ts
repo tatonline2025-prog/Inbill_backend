@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import {
   exportInvoicesToExcel,
+  exportInvoicesToExcelPrinted,
   fetchallInvoice,
   fetchInvoiceByUser,
   previewExcel,
@@ -30,6 +31,7 @@ router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 
 router.get("/exportExcel", exportInvoicesToExcel);
+router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
 
 router.patch("/:invoiceId/toggle", toggleInvoiceStatus);
 
