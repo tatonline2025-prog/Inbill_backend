@@ -11,13 +11,27 @@ import invoiceRoute from "./routes/invoiceRoutes";
 dotenv.config();
 connectDB();
 
+const allowedOrigins = [
+  "http://localhost:3000", // frontend dev
+  "https://hoadon.dvtienich.vn", // frontend production
+];
+
 const app = express();
 app.use(
   cors({
-    origin: "http://localhost:3000", // URL của frontend Next.js
+    origin: function (origin, callback) {
+      // cho phép các request không có origin (ví dụ từ Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
+
 app.use(express.json());
 
 app.use("/api/auth", authRoute);
