@@ -1,0 +1,96 @@
+# -------------------
+# Node.js
+# -------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# -------------------
+# Next.js
+# -------------------
+.next/
+out/
+dist/
+.cache/
+.build/
+
+# -------------------
+# Logs
+# -------------------
+logs/
+*.log
+*.log.*
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# -------------------
+# Environment Variables
+# -------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# -------------------
+# TypeScript
+# -------------------
+*.tsbuildinfo
+
+# -------------------
+# Editor directories and files
+# -------------------
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# -------------------
+# OS generated files
+# -------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -------------------
+# Optional npm cache
+# -------------------
+.npm
+.yarn
+.pnpm-store/
+
+# -------------------
+# Coverage directories
+# -------------------
+coverage/
+.nyc_output/
+
+# -------------------
+# Mac specific
+# -------------------
+.AppleDouble
+.LSOverride
+
+# -------------------
+# Windows specific
+# -------------------
+ehthumbs.db
+Icon?
+$RECYCLE.BIN/
+
+# -------------------
+# Linux specific
+# -------------------
+*~

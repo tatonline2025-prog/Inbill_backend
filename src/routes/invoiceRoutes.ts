@@ -1,0 +1,36 @@
+import { Router } from "express";
+import multer from "multer";
+import {
+  exportInvoicesToExcel,
+  fetchallInvoice,
+  fetchInvoiceByUser,
+  previewExcel,
+  toggleInvoiceStatus,
+} from "../controllers/invoiceController";
+import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
+
+const router = Router();
+
+// Cấu hình multer để lưu file trong bộ nhớ (memory storage)
+// Vì chúng ta chỉ cần đọc rồi bỏ đi, không cần lưu vào đĩa
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// Định nghĩa route POST
+// - Yêu cầu phải đăng nhập (authenticate)
+// - upload.single('excelFile'): Middleware của multer sẽ tìm file có name='excelFile' trong request
+router.post(
+  "/upload-preview",
+  //   authenticate,
+  upload.single("excelFile"), // 'excelFile' phải trùng với key trong FormData ở frontend
+  previewExcel
+);
+
+router.get("/fetchall", fetchallInvoice);
+router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
+
+router.get("/exportExcel", exportInvoicesToExcel);
+
+router.patch("/:invoiceId/toggle", toggleInvoiceStatus);
+
+export default router;
