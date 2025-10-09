@@ -192,7 +192,8 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     }
 
     // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
-    const dataForExcel = invoices.map((invoice) => ({
+    const dataForExcel = invoices.map((invoice, index) => ({
+      STT: index + 1,
       "Số Hóa Đơn": invoice.invoiceNumber,
       "Tên Khách Hàng": invoice.customerName,
       "Số điện thoại": invoice.customerPhone,
@@ -216,6 +217,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
 
     // Tùy chỉnh độ rộng cột (tùy chọn)
     worksheet["!cols"] = [
+      { wch: 10 },
       { wch: 20 },
       { wch: 25 },
       { wch: 15 },
@@ -265,7 +267,8 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
     }
     // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
-    const dataForExcel = invoices.map((invoice) => ({
+    const dataForExcel = invoices.map((invoice, index) => ({
+      STT: index + 1,
       "Số Hóa Đơn": invoice.invoiceNumber,
       "Tên Khách Hàng": invoice.customerName,
       "Số điện thoại": invoice.customerPhone,
@@ -287,6 +290,7 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
     XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
     // Tùy chỉnh độ rộng cột (tùy chọn)
     worksheet["!cols"] = [
+      { wch: 10 },
       { wch: 20 },
       { wch: 25 },
       { wch: 15 },
