@@ -11,7 +11,6 @@ export const previewExcel = async (req: Request, res: Response) => {
     month = 12;
     year -= 1;
   }
-
   const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
 
   try {
@@ -21,22 +20,55 @@ export const previewExcel = async (req: Request, res: Response) => {
 
     const { userId } = req.body;
 
+    // **Bước 1: Định nghĩa ánh xạ giữa tên cột Excel và trường trong database**
+    // Quan trọng: Key ở đây PHẢI TRÙNG KHỚP với tên cột trong file Excel.
+    const columnMapping = {
+      "Mã khách hàng": "invoiceNumber",
+      "Tên Khách Hàng": "customerName",
+      "Tổng Tiền": "totalAmount",
+      "Địa Chỉ": "customerAddress",
+    };
+
     const fileBuffer = req.file.buffer;
     const workbook = XLSX.read(fileBuffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-    const cleanedRows = jsonData.map((row) => row.filter(Boolean)).filter((row) => row.length > 0);
+    // **Bước 2: Chuyển sheet thành JSON object thay vì array của array**
+    // Thư viện sẽ tự động dùng dòng đầu tiên làm key cho các object.
+    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-    const documentsToCreate = cleanedRows.map((row) => ({
-      invoiceNumber: row[1],
-      customerName: row[3],
-      billing_period: billing_period,
-      totalAmount: row[2],
-      customerAddress: row[4],
-      assignedTo: userId,
-    }));
+    // **Bước 3: Xử lý dữ liệu với tên cột đã được ánh xạ**
+    const documentsToCreate = jsonData
+      .map((row) => {
+        const newDoc: any = {
+          billing_period: billing_period,
+          assignedTo: userId,
+        };
+
+        // Dùng vòng lặp để gán giá trị từ row vào newDoc dựa trên `columnMapping`
+        for (const excelHeader in columnMapping) {
+          if (row[excelHeader] !== undefined) {
+            const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
+            newDoc[dbField] = row[excelHeader];
+          }
+        }
+
+        // Chỉ xử lý những dòng có invoiceNumber
+        if (!newDoc.invoiceNumber) {
+          return null;
+        }
+
+        return newDoc;
+      })
+      .filter(Boolean); // Lọc ra những dòng null (không hợp lệ)
+
+    if (documentsToCreate.length === 0) {
+      return res.status(400).json({
+        message: `Không tìm thấy dữ liệu hợp lệ trong file Excel. Vui lòng kiểm tra lại tên các cột. 
+        Lưu ý các cột đầu tiên phải đúng tên sau: Mã khách hàng, Tên Khách Hàng, Tổng Tiền, Địa Chỉ `,
+      });
+    }
 
     // Dùng bulkWrite để update nếu đã có, insert nếu chưa có
     const bulkOps = documentsToCreate.map((doc) => ({
