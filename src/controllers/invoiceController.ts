@@ -103,6 +103,84 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
   }
 };
 
+export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response) => {
+  const { customerCode } = req.query;
+
+  try {
+    // 1️⃣ Kiểm tra xác thực người dùng
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
+      });
+    }
+
+    // 2️⃣ Lấy danh sách hoá đơn của người dùng
+    const invoices = await Invoice.findOne({
+      assignedTo: req.user.id,
+      invoiceNumber: customerCode,
+      collectionStatus: "not_collected",
+    }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
+
+    // 3️⃣ Nếu không có hoá đơn nào
+    if (!invoices) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
+      });
+    }
+
+    // 4️⃣ Trả về dữ liệu
+    res.status(200).json(invoices);
+  } catch (error) {
+    console.error("Lỗi khi lấy hoá đơn:", error);
+    res.status(500).json({
+      success: false,
+      message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
+      error: (error as Error).message,
+    });
+  }
+};
+
+export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) => {
+  const { customerCode } = req.query;
+
+  try {
+    // 1️⃣ Kiểm tra xác thực người dùng
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
+      });
+    }
+
+    // 2️⃣ Lấy danh sách hoá đơn của người dùng
+    const invoices = await Invoice.findOne({
+      assignedTo: req.user.id,
+      invoiceNumber: customerCode,
+      collectionStatus: "collected",
+    }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
+
+    // 3️⃣ Nếu không có hoá đơn nào
+    if (!invoices) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
+      });
+    }
+
+    // 4️⃣ Trả về dữ liệu
+    res.status(200).json(invoices);
+  } catch (error) {
+    console.error("Lỗi khi lấy hoá đơn:", error);
+    res.status(500).json({
+      success: false,
+      message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
+      error: (error as Error).message,
+    });
+  }
+};
+
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
     // 1. Lấy tất cả dữ liệu hóa đơn từ database

@@ -4,7 +4,9 @@ import {
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
   fetchallInvoice,
+  fetchCollectedInvoicesByUser,
   fetchInvoiceByUser,
+  fetchUncollectedInvoicesByUser,
   previewExcel,
   toggleInvoiceStatus,
 } from "../controllers/invoiceController";
@@ -29,6 +31,8 @@ router.post(
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
+router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
+router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
 
 router.get("/exportExcel", exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
