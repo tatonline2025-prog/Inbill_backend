@@ -3,7 +3,9 @@ import multer from "multer";
 import {
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
+  fetchAllColInvoiceByUser,
   fetchallInvoice,
+  fetchAllUnColInvoiceByUser,
   fetchCollectedInvoicesByUser,
   fetchInvoiceByUser,
   fetchUncollectedInvoicesByUser,
@@ -31,6 +33,8 @@ router.post(
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
+router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
+router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
 router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
 router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
 
