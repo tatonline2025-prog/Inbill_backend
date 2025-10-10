@@ -37,7 +37,7 @@ export const login = async (req: Request, res: Response) => {
         fullName: user.fullName,
       },
       process.env.JWT_SECRET!,
-      { expiresIn: "8h" } // Token sẽ hết hạn sau 8 tiếng
+      { expiresIn: "24h" } // Token sẽ hết hạn sau 8 tiếng
     );
 
     // 5. Trả về token và thông tin user (trừ password)
