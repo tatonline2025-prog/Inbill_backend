@@ -13,6 +13,13 @@ const userSchema = new mongoose.Schema(
 
     email: { type: String, required: true, unique: true },
 
+    province: {
+      type: String,
+      required: false, // Có thể để optional nếu không bắt buộc
+      trim: true,
+      default: "",
+    },
+
     // Dùng để phân quyền hệ thống
     role: {
       type: String,

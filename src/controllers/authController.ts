@@ -31,7 +31,7 @@ export const login = async (req: Request, res: Response) => {
     // 4. Ký và tạo token
     const token = jwt.sign(
       {
-        id: user._id,
+        _id: user._id,
         role: user.role,
         username: user.username,
         fullName: user.fullName,
@@ -45,7 +45,7 @@ export const login = async (req: Request, res: Response) => {
       message: "Đăng nhập thành công!",
       token,
       user: {
-        id: user._id,
+        _id: user._id,
         username: user.username,
         fullName: user.fullName,
         role: user.role,
@@ -59,10 +59,10 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { userName, email, password, fullName } = req.body;
+    const { userName, email, password, fullName, province } = req.body;
 
     // --- VALIDATION ---
-    if (!userName || !password || !email || !fullName) {
+    if (!userName || !password || !email || !fullName || !province) {
       return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin: username, password, fullName." });
     }
 
@@ -84,7 +84,7 @@ export const register = async (req: Request, res: Response) => {
     if (!req.user || req.user.role !== "admin") {
       return res.status(403).json({ message: "Chỉ admin mới có quyền tạo tài khoản mới." });
     }
-    createdBy = req.user.id; // Gán ID của admin đã tạo user này
+    createdBy = req.user._id; // Gán ID của admin đã tạo user này
 
     // --- CREATE USER ---
     const newUser = await User.create({
@@ -92,6 +92,7 @@ export const register = async (req: Request, res: Response) => {
       password: hashedPassword,
       fullName,
       email,
+      province,
       role,
       createdBy,
     });
@@ -101,6 +102,7 @@ export const register = async (req: Request, res: Response) => {
       id: newUser._id,
       username: newUser.username,
       fullName: newUser.fullName,
+      province: newUser.province,
       role: newUser.role,
       createdAt: newUser.createdAt,
     };
@@ -122,5 +124,38 @@ export const me = async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const changepassword = async (req: Request, res: Response) => {
+  try {
+    const { newpass } = req.body;
+
+    console.log();
+
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
+      });
+    }
+
+    const userId = req.user._id;
+    // Tìm user hiện tại trong database
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng." });
+    }
+
+    // Mã hóa mật khẩu mới
+    const hashedPassword = await bcrypt.hash(newpass, 10);
+    user.password = hashedPassword;
+
+    await user.save();
+
+    return res.status(200).json({ message: "Đổi mật khẩu thành công." });
+  } catch (error) {
+    console.error("Lỗi đổi mật khẩu:", error);
+    return res.status(500).json({ message: "Đã xảy ra lỗi khi đổi mật khẩu." });
   }
 };

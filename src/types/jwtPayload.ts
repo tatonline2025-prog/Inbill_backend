@@ -1,6 +1,6 @@
 // src/types/jwtPayload.ts
 export interface JwtPayload {
-  id: string;
+  _id: string;
   username: string;
   fullName: string;
   email: string;

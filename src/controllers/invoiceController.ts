@@ -106,7 +106,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
 export const fetchInvoiceByUser = async (req: Request, res: Response) => {
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
-    if (!req.user || !req.user.id) {
+    if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
@@ -114,7 +114,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
     }
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
-    const invoices = await Invoice.find({ assignedTo: req.user.id })
+    const invoices = await Invoice.find({ assignedTo: req.user._id })
       .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
@@ -141,7 +141,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
 export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) => {
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
-    if (!req.user || !req.user.id) {
+    if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
@@ -149,7 +149,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
     }
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
-    const invoices = await Invoice.find({ assignedTo: req.user.id, collectionStatus: "not_collected" })
+    const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "not_collected" })
       .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
@@ -176,7 +176,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
 export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
-    if (!req.user || !req.user.id) {
+    if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
@@ -184,7 +184,7 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
     }
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
-    const invoices = await Invoice.find({ assignedTo: req.user.id, collectionStatus: "collected" })
+    const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "collected" })
       .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
@@ -213,7 +213,7 @@ export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response
 
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
-    if (!req.user || !req.user.id) {
+    if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
@@ -222,7 +222,7 @@ export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.findOne({
-      assignedTo: req.user.id,
+      assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "not_collected",
     }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
@@ -252,7 +252,7 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
 
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
-    if (!req.user || !req.user.id) {
+    if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
@@ -261,7 +261,7 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.findOne({
-      assignedTo: req.user.id,
+      assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "collected",
     }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
