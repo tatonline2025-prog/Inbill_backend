@@ -73,7 +73,10 @@ export const previewExcel = async (req: Request, res: Response) => {
     // Dùng bulkWrite để update nếu đã có, insert nếu chưa có
     const bulkOps = documentsToCreate.map((doc) => ({
       updateOne: {
-        filter: { invoiceNumber: doc.invoiceNumber },
+        filter: {
+          invoiceNumber: doc.invoiceNumber,
+          billing_period: doc.billing_period,
+        },
         update: { $set: doc },
         upsert: true,
       },
