@@ -299,7 +299,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Số Hóa Đơn": invoice.invoiceNumber,
+      "Mã Khách Hàng": invoice.invoiceNumber,
       "Tên Khách Hàng": invoice.customerName,
       "Số điện thoại": invoice.customerPhone,
       "Địa Chỉ": invoice.customerAddress,
