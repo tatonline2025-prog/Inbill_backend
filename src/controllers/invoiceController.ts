@@ -44,6 +44,7 @@ export const previewExcel = async (req: Request, res: Response) => {
         const newDoc: any = {
           billing_period: billing_period,
           assignedTo: userId,
+          issueDate: new Date(),
         };
 
         // Dùng vòng lặp để gán giá trị từ row vào newDoc dựa trên `columnMapping`
