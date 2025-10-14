@@ -8,6 +8,7 @@ import {
   fetchAllUnColInvoiceByUser,
   fetchCollectedInvoicesByUser,
   fetchInvoiceByUser,
+  fetchInvoiceByUserMonth,
   fetchUncollectedInvoicesByUser,
   previewExcel,
   toggleInvoiceStatus,
@@ -33,10 +34,13 @@ router.post(
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
+router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
-router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
-router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
+
+// Tìm 1 hoá đơn theo người đảm nhận
+// router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
+// router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
 
 router.get("/exportExcel", exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);

@@ -7,10 +7,12 @@ export const previewExcel = async (req: Request, res: Response) => {
   const now = new Date();
   let month = now.getMonth();
   let year = now.getFullYear();
+
   if (month === 0) {
     month = 12;
     year -= 1;
   }
+
   const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
 
   try {
@@ -20,8 +22,6 @@ export const previewExcel = async (req: Request, res: Response) => {
 
     const { userId } = req.body;
 
-    // **Bước 1: Định nghĩa ánh xạ giữa tên cột Excel và trường trong database**
-    // Quan trọng: Key ở đây PHẢI TRÙNG KHỚP với tên cột trong file Excel.
     const columnMapping = {
       "Mã khách hàng": "invoiceNumber",
       "Tên Khách Hàng": "customerName",
@@ -33,21 +33,17 @@ export const previewExcel = async (req: Request, res: Response) => {
     const workbook = XLSX.read(fileBuffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-
-    // **Bước 2: Chuyển sheet thành JSON object thay vì array của array**
-    // Thư viện sẽ tự động dùng dòng đầu tiên làm key cho các object.
     const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-    // **Bước 3: Xử lý dữ liệu với tên cột đã được ánh xạ**
+    // Tạo danh sách hóa đơn
     const documentsToCreate = jsonData
       .map((row) => {
         const newDoc: any = {
-          billing_period: billing_period,
+          billing_period,
           assignedTo: userId,
           issueDate: new Date(),
         };
 
-        // Dùng vòng lặp để gán giá trị từ row vào newDoc dựa trên `columnMapping`
         for (const excelHeader in columnMapping) {
           if (row[excelHeader] !== undefined) {
             const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
@@ -55,23 +51,49 @@ export const previewExcel = async (req: Request, res: Response) => {
           }
         }
 
-        // Chỉ xử lý những dòng có invoiceNumber
-        if (!newDoc.invoiceNumber) {
-          return null;
-        }
-
+        if (!newDoc.invoiceNumber) return null;
         return newDoc;
       })
-      .filter(Boolean); // Lọc ra những dòng null (không hợp lệ)
+      .filter(Boolean);
 
     if (documentsToCreate.length === 0) {
       return res.status(400).json({
-        message: `Không tìm thấy dữ liệu hợp lệ trong file Excel. Vui lòng kiểm tra lại tên các cột. 
-        Lưu ý các cột đầu tiên phải đúng tên sau: Mã khách hàng, Tên Khách Hàng, Tổng Tiền, Địa Chỉ `,
+        message: `Không tìm thấy dữ liệu hợp lệ trong file Excel. Vui lòng kiểm tra lại tên các cột.`,
       });
     }
 
-    // Dùng bulkWrite để update nếu đã có, insert nếu chưa có
+    // 🔹 Bước mới: Tìm kỳ trước đó
+    let prevMonth = month - 1;
+    let prevYear = year;
+    if (prevMonth <= 0) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    const prevBillingPeriod = `${prevMonth.toString().padStart(2, "0")}/${prevYear}`;
+
+    // 🔹 Lấy tất cả invoiceNumber của file hiện tại
+    const invoiceNumbers = documentsToCreate.map((doc) => doc.invoiceNumber);
+
+    // 🔹 Tìm các hoá đơn cùng mã trong kỳ trước
+    const prevInvoices = await Invoice.find({
+      billing_period: prevBillingPeriod,
+      invoiceNumber: { $in: invoiceNumbers },
+    }).lean();
+
+    // 🔹 Tạo map để dễ tra cứu
+    const prevMap = new Map(prevInvoices.map((inv) => [inv.invoiceNumber, inv.totalAmount]));
+
+    // 🔹 Thêm trường previousAmount nếu có
+    documentsToCreate.forEach((doc) => {
+      const prevAmount = prevMap.get(doc.invoiceNumber);
+      if (prevAmount !== undefined) {
+        doc.previousAmount = prevAmount; // 🔸 thêm biến mới
+      } else {
+        doc.previousAmount = 0;
+      }
+    });
+
+    // 🔹 Cập nhật / thêm mới hoá đơn
     const bulkOps = documentsToCreate.map((doc) => ({
       updateOne: {
         filter: {
@@ -97,7 +119,18 @@ export const previewExcel = async (req: Request, res: Response) => {
 };
 
 export const fetchallInvoice = async (req: Request, res: Response) => {
-  const result = await Invoice.find()
+  const now = new Date();
+  let month = now.getMonth();
+  let year = now.getFullYear();
+
+  if (month === 0) {
+    month = 12;
+    year -= 1;
+  }
+
+  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+
+  const result = await Invoice.find({ billing_period })
     .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
     .sort({ billing_period: -1 });
 
@@ -119,13 +152,43 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
       .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
-    // 3️⃣ Nếu không có hoá đơn nào
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
+    // 4️⃣ Trả về dữ liệu
+    res.status(200).json(invoices);
+  } catch (error) {
+    console.error("Lỗi khi lấy hoá đơn:", error);
+    res.status(500).json({
+      success: false,
+      message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
+      error: (error as Error).message,
+    });
+  }
+};
+
+export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
+  const now = new Date();
+  let month = now.getMonth();
+  let year = now.getFullYear();
+
+  if (month === 0) {
+    month = 12;
+    year -= 1;
+  }
+
+  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+
+  try {
+    // 1️⃣ Kiểm tra xác thực người dùng
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
         success: false,
-        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
+        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
       });
     }
+
+    // 2️⃣ Lấy danh sách hoá đơn của người dùng
+    const invoices = await Invoice.find({ assignedTo: req.user._id, billing_period })
+      .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .sort({ billing_period: -1 });
 
     // 4️⃣ Trả về dữ liệu
     res.status(200).json(invoices);
@@ -456,5 +519,18 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+export const removeInvoice = async () => {
+  try {
+    const billing_period = `10/2025`;
+
+    // Xoá toàn bộ hoá đơn theo kỳ thanh toán
+    const result = await Invoice.deleteMany({ billing_period });
+
+    console.log("Đã xoá thành công");
+  } catch (error) {
+    console.error("Lỗi khi xoá hoá đơn:", error);
   }
 };

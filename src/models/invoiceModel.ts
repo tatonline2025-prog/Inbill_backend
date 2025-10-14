@@ -9,6 +9,8 @@ const invoiceSchema = new mongoose.Schema(
     billing_period: { type: String, required: true },
     customerAddress: { type: String, default: "" },
     totalAmount: { type: String, required: true },
+    previousAmount: { type: String, required: false },
+
     collectionStatus: {
       type: String,
       enum: ["collected", "not_collected"],
