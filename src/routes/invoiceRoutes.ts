@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import {
+  createInvoice,
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
   fetchAllColInvoiceByUser,
@@ -37,6 +38,8 @@ router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
+
+router.post("/creatnew", authenticate, createInvoice);
 
 // Tìm 1 hoá đơn theo người đảm nhận
 // router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);

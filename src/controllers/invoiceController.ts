@@ -522,6 +522,55 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const createInvoice = async (req: Request, res: Response) => {
+  try {
+    // ✅ Lấy dữ liệu từ body
+    const { invoiceNumber, customerName, customerPhone, customerAddress, billing_period, totalAmount, assignedTo } =
+      req.body.newInvoice;
+
+    // console.log(invoiceNumber, customerName, customerPhone, customerAddress, billing_period, totalAmount, assignedTo);
+
+    // ✅ Kiểm tra thiếu dữ liệu
+    if (!invoiceNumber || !customerName || !billing_period || !totalAmount) {
+      return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
+    }
+
+    // ✅ Kiểm tra hoá đơn trùng kỳ và số
+    const existInvoice = await Invoice.findOne({
+      invoiceNumber,
+      billing_period,
+    });
+    if (existInvoice) {
+      return res.status(409).json({ message: "Hoá đơn này của kỳ đã tồn tại." });
+    }
+
+    const finalAssignedTo = assignedTo || req.user?._id;
+
+    // ✅ Tạo bản ghi mới
+    const newInvoice = new Invoice({
+      invoiceNumber,
+      customerName,
+      customerPhone,
+      customerAddress,
+      billing_period,
+      totalAmount,
+      assignedTo: finalAssignedTo,
+      createdAt: new Date(),
+    });
+
+    await newInvoice.save();
+
+    // ✅ Phản hồi chuẩn REST
+    return res.status(201).json({
+      message: "Tạo hoá đơn mới thành công.",
+      // invoice: newInvoice,
+    });
+  } catch (error) {
+    console.error("Lỗi khi tạo hoá đơn:", error);
+    return res.status(500).json({ message: "Lỗi server khi tạo hoá đơn." });
+  }
+};
+
 export const removeInvoice = async () => {
   try {
     const billing_period = `10/2025`;
