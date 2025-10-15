@@ -571,6 +571,23 @@ export const createInvoice = async (req: Request, res: Response) => {
   }
 };
 
+export const deleteInvoice = async (req: Request, res: Response) => {
+  try {
+    const { invoiceNumber } = req.params;
+
+    console.log(invoiceNumber);
+
+    // Xoá toàn bộ hoá đơn theo kỳ thanh toán
+    const result = await Invoice.findByIdAndDelete(invoiceNumber);
+
+    res.status(200).json({ message: "Đã xoá hoá đơn chỉ định" });
+
+    console.log("Đã xoá thành công");
+  } catch (error) {
+    console.error("Lỗi khi xoá hoá đơn:", error);
+  }
+};
+
 export const removeInvoice = async () => {
   try {
     const billing_period = `10/2025`;
