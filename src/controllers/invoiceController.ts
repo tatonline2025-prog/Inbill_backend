@@ -24,9 +24,12 @@ export const previewExcel = async (req: Request, res: Response) => {
 
     const columnMapping = {
       "Mã khách hàng": "invoiceNumber",
-      "Tên Khách Hàng": "customerName",
-      "Tổng Tiền": "totalAmount",
-      "Địa Chỉ": "customerAddress",
+      "Tên khách": "customerName",
+      "Địa chỉ": "customerAddress",
+      "Tổng tiền": "totalAmount",
+      "Kỳ này": "currentAmount",
+      "Kỳ trước": "previousAmount",
+      "Số ĐT KH": "customerPhone",
     };
 
     const fileBuffer = req.file.buffer;
@@ -61,37 +64,6 @@ export const previewExcel = async (req: Request, res: Response) => {
         message: `Không tìm thấy dữ liệu hợp lệ trong file Excel. Vui lòng kiểm tra lại tên các cột.`,
       });
     }
-
-    // 🔹 Bước mới: Tìm kỳ trước đó
-    let prevMonth = month - 1;
-    let prevYear = year;
-    if (prevMonth <= 0) {
-      prevMonth = 12;
-      prevYear -= 1;
-    }
-    const prevBillingPeriod = `${prevMonth.toString().padStart(2, "0")}/${prevYear}`;
-
-    // 🔹 Lấy tất cả invoiceNumber của file hiện tại
-    const invoiceNumbers = documentsToCreate.map((doc) => doc.invoiceNumber);
-
-    // 🔹 Tìm các hoá đơn cùng mã trong kỳ trước
-    const prevInvoices = await Invoice.find({
-      billing_period: prevBillingPeriod,
-      invoiceNumber: { $in: invoiceNumbers },
-    }).lean();
-
-    // 🔹 Tạo map để dễ tra cứu
-    const prevMap = new Map(prevInvoices.map((inv) => [inv.invoiceNumber, inv.totalAmount]));
-
-    // 🔹 Thêm trường previousAmount nếu có
-    documentsToCreate.forEach((doc) => {
-      const prevAmount = prevMap.get(doc.invoiceNumber);
-      if (prevAmount !== undefined) {
-        doc.previousAmount = prevAmount; // 🔸 thêm biến mới
-      } else {
-        doc.previousAmount = 0;
-      }
-    });
 
     // 🔹 Cập nhật / thêm mới hoá đơn
     const bulkOps = documentsToCreate.map((doc) => ({
@@ -525,13 +497,30 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
 export const createInvoice = async (req: Request, res: Response) => {
   try {
     // ✅ Lấy dữ liệu từ body
-    const { invoiceNumber, customerName, customerPhone, customerAddress, billing_period, totalAmount, assignedTo } =
-      req.body.newInvoice;
+    const {
+      invoiceNumber,
+      customerName,
+      customerPhone,
+      customerAddress,
+      billing_period,
+      currentAmount,
+      previousAmount,
+      assignedTo,
+    } = req.body.newInvoice;
 
-    // console.log(invoiceNumber, customerName, customerPhone, customerAddress, billing_period, totalAmount, assignedTo);
+    console.log(
+      invoiceNumber,
+      customerName,
+      customerPhone,
+      customerAddress,
+      billing_period,
+      currentAmount,
+      previousAmount,
+      assignedTo
+    );
 
     // ✅ Kiểm tra thiếu dữ liệu
-    if (!invoiceNumber || !customerName || !billing_period || !totalAmount) {
+    if (!invoiceNumber || !customerName || !billing_period || !currentAmount || !previousAmount) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
@@ -553,7 +542,9 @@ export const createInvoice = async (req: Request, res: Response) => {
       customerPhone,
       customerAddress,
       billing_period,
-      totalAmount,
+      currentAmount,
+      previousAmount,
+      totalAmount: Number(currentAmount) + Number(previousAmount), // ✅ tính tổng
       assignedTo: finalAssignedTo,
       createdAt: new Date(),
     });

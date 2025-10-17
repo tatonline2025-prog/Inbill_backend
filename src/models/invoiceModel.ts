@@ -8,8 +8,12 @@ const invoiceSchema = new mongoose.Schema(
     customerPhone: { type: String },
     billing_period: { type: String, required: true },
     customerAddress: { type: String, default: "" },
+
+    // 💰 Tiền kỳ này và kỳ trước
+    currentAmount: { type: String, required: true }, // Tiền kỳ này
+    previousAmount: { type: String, required: false }, // Tiền kỳ trước
+
     totalAmount: { type: String, required: true },
-    previousAmount: { type: String, required: false },
 
     collectionStatus: {
       type: String,
@@ -21,10 +25,12 @@ const invoiceSchema = new mongoose.Schema(
       enum: ["printed", "not_printed"],
       default: "not_printed",
     },
-    // Sửa đổi ở đây: tự động lấy ngày hiện tại
+
+    // 🗓 Ngày phát hành & ngày thu tiền
     issueDate: { type: Date, default: Date.now },
-    // Thêm trường mới ở đây
     collectionDate: { type: Date },
+
+    // 👥 Người xử lý
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadFileId: { type: mongoose.Schema.Types.ObjectId, ref: "ExcelUpload" },
@@ -43,9 +49,11 @@ export interface IInvoice {
   _id: mongoose.Types.ObjectId;
   invoiceNumber: string;
   customerName: string;
-  customerPhone?: string | null; // ✅ cho phép null
+  customerPhone?: string | null;
   billing_period: string;
   customerAddress?: string | null;
+  currentAmount: string; // 💰 Tiền kỳ này
+  previousAmount?: string | null; // 💰 Tiền kỳ trước
   totalAmount: string;
   collectionStatus: "collected" | "not_collected";
   printStatus: "printed" | "not_printed";
