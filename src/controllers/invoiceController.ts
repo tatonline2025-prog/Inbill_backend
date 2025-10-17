@@ -24,12 +24,12 @@ export const previewExcel = async (req: Request, res: Response) => {
 
     const columnMapping = {
       "Mã khách hàng": "invoiceNumber",
-      "Tên khách": "customerName",
+      Tên: "customerName",
       "Địa chỉ": "customerAddress",
       "Tổng tiền": "totalAmount",
       "Kỳ này": "currentAmount",
       "Kỳ trước": "previousAmount",
-      "Số ĐT KH": "customerPhone",
+      // "Số ĐT KH": "customerPhone",
     };
 
     const fileBuffer = req.file.buffer;
