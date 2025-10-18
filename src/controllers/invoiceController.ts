@@ -576,16 +576,16 @@ export const updateInvoice = async (req: Request, res: Response) => {
     } = req.body.formData;
     const { invoiceNumber } = req.params;
 
-    console.log(
-      customerName,
-      customerAddress,
-      customerPhone,
-      currentAmount,
-      previousAmount,
-      totalAmount,
-      note,
-      assignedTo
-    );
+    // console.log(
+    //   customerName,
+    //   customerAddress,
+    //   customerPhone,
+    //   currentAmount,
+    //   previousAmount,
+    //   totalAmount,
+    //   note,
+    //   assignedTo
+    // );
 
     if (!invoiceNumber || !customerName || !currentAmount || !previousAmount || !totalAmount) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
