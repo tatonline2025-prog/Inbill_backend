@@ -461,7 +461,7 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     const invoiceId = req.params.invoiceId;
     const { field } = req.body; // "printStatus" | "collectionStatus"
 
-    // console.log(invoiceId, field);
+    console.log(invoiceId, field);
 
     if (!["printStatus", "collectionStatus"].includes(field)) {
       return res.status(400).json({ message: "Field không hợp lệ" });
@@ -559,6 +559,63 @@ export const createInvoice = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Lỗi khi tạo hoá đơn:", error);
     return res.status(500).json({ message: "Lỗi server khi tạo hoá đơn." });
+  }
+};
+
+export const updateInvoice = async (req: Request, res: Response) => {
+  try {
+    const {
+      customerName,
+      customerAddress,
+      customerPhone,
+      currentAmount,
+      previousAmount,
+      totalAmount,
+      note,
+      assignedTo,
+    } = req.body.formData;
+    const { invoiceNumber } = req.params;
+
+    console.log(
+      customerName,
+      customerAddress,
+      customerPhone,
+      currentAmount,
+      previousAmount,
+      totalAmount,
+      note,
+      assignedTo
+    );
+
+    if (!invoiceNumber || !customerName || !currentAmount || !previousAmount || !totalAmount) {
+      return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
+    }
+
+    // Kiểm tra hoá đơn
+    const invoice = await Invoice.findOne({ invoiceNumber: invoiceNumber });
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hoá đơn." });
+    }
+
+    const finalAssignedTo = assignedTo || req.user?._id;
+
+    // Cập nhật hoá đơn
+    invoice.customerName = customerName;
+    invoice.customerPhone = customerPhone || "";
+    invoice.customerAddress = customerAddress || "";
+    invoice.currentAmount = currentAmount;
+    invoice.previousAmount = previousAmount;
+    invoice.totalAmount = String(Number(currentAmount) + Number(previousAmount));
+    invoice.assignedTo = finalAssignedTo;
+    invoice.note = note !== undefined ? note : invoice.note;
+
+    await invoice.save();
+
+    return res.status(200).json({ message: "Cập nhật hoá đơn thành công.", invoice });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật hoá đơn:", error);
+    return res.status(500).json({ message: "Lỗi server khi cập nhật hoá đơn." });
   }
 };
 

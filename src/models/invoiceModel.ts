@@ -34,6 +34,8 @@ const invoiceSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadFileId: { type: mongoose.Schema.Types.ObjectId, ref: "ExcelUpload" },
+
+    note: { type: String, default: "" },
   },
   {
     timestamps: true,
@@ -62,4 +64,5 @@ export interface IInvoice {
   assignedTo?: mongoose.Types.ObjectId | IUser | null;
   uploadedBy?: mongoose.Types.ObjectId | IUser | null;
   uploadFileId?: mongoose.Types.ObjectId | null;
+  note?: string | null;
 }

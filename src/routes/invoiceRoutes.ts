@@ -14,6 +14,7 @@ import {
   fetchUncollectedInvoicesByUser,
   previewExcel,
   toggleInvoiceStatus,
+  updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
 
@@ -41,7 +42,6 @@ router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
 
 router.post("/creatnew", authenticate, createInvoice);
-router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 
 // Tìm 1 hoá đơn theo người đảm nhận
 // router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
@@ -50,6 +50,8 @@ router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 router.get("/exportExcel", exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
 
+router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
+router.put("/update/:invoiceNumber", updateInvoice);
 router.patch("/:invoiceId/toggle", toggleInvoiceStatus);
 
 export default router;
