@@ -109,6 +109,75 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
   res.status(200).json(result);
 };
 
+export const getInvoiceSummary = async (req: Request, res: Response) => {
+  try {
+    // Dùng aggregate để tính tổng hợp
+    const result = await Invoice.aggregate([
+      {
+        $lookup: {
+          from: "users",
+          let: { userId: "$assignedTo" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
+            {
+              $project: {
+                password: 0, // loại password nếu tên field là "password"
+                pass: 0, // hoặc "pass" nếu bạn có field đó
+                __v: 0, // bỏ __v nếu muốn
+              },
+            },
+          ],
+          as: "assignedTo",
+        },
+      },
+      { $unwind: { path: "$assignedTo", preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: {
+            billing_period: "$billing_period",
+            assignedTo: "$assignedTo._id",
+          },
+          billing_period: { $first: "$billing_period" },
+          assignedTo: { $first: "$assignedTo" },
+          collectedCount: {
+            $sum: { $cond: [{ $eq: ["$collectionStatus", "collected"] }, 1, 0] },
+          },
+          notCollectedCount: {
+            $sum: { $cond: [{ $eq: ["$collectionStatus", "not_collected"] }, 1, 0] },
+          },
+          collectedTotal: {
+            $sum: {
+              $cond: [
+                { $eq: ["$collectionStatus", "collected"] },
+                { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } },
+                0,
+              ],
+            },
+          },
+          notCollectedTotal: {
+            $sum: {
+              $cond: [
+                { $eq: ["$collectionStatus", "not_collected"] },
+                { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } },
+                0,
+              ],
+            },
+          },
+        },
+      },
+      {
+        // ✅ Sắp xếp cho dễ nhìn: theo kỳ mới nhất
+        $sort: { billing_period: -1 },
+      },
+    ]);
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in getInvoiceSummary:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const fetchInvoiceByUser = async (req: Request, res: Response) => {
   try {
     // 1️⃣ Kiểm tra xác thực người dùng

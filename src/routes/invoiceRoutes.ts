@@ -12,6 +12,7 @@ import {
   fetchInvoiceByUser,
   fetchInvoiceByUserMonth,
   fetchUncollectedInvoicesByUser,
+  getInvoiceSummary,
   previewExcel,
   toggleInvoiceStatus,
   updateInvoice,
@@ -34,6 +35,8 @@ router.post(
   upload.single("excelFile"), // 'excelFile' phải trùng với key trong FormData ở frontend
   previewExcel
 );
+
+router.get("/summary", getInvoiceSummary);
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);

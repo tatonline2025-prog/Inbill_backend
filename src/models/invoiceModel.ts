@@ -9,10 +9,12 @@ const invoiceSchema = new mongoose.Schema(
     billing_period: { type: String, required: true },
     customerAddress: { type: String, default: "" },
 
+    // 🏙️ Thêm tỉnh (province)
+    province: { type: String, default: "" },
+
     // 💰 Tiền kỳ này và kỳ trước
     currentAmount: { type: String, required: true }, // Tiền kỳ này
     previousAmount: { type: String, required: false }, // Tiền kỳ trước
-
     totalAmount: { type: String, required: true },
 
     collectionStatus: {
@@ -54,9 +56,14 @@ export interface IInvoice {
   customerPhone?: string | null;
   billing_period: string;
   customerAddress?: string | null;
+
+  /** 🏙️ Tỉnh của khách hàng hoặc hóa đơn */
+  province?: string | null;
+
   currentAmount: string; // 💰 Tiền kỳ này
   previousAmount?: string | null; // 💰 Tiền kỳ trước
   totalAmount: string;
+
   collectionStatus: "collected" | "not_collected";
   printStatus: "printed" | "not_printed";
   issueDate: Date;
