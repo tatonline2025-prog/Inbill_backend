@@ -477,131 +477,151 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
 
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
-    // 1. Lấy tất cả dữ liệu hóa đơn từ database
-    // Dùng lean() để lấy object thuần túy, nhanh hơn
+    // 1️⃣ Lấy tất cả dữ liệu hóa đơn
     const invoices: IInvoice[] = await Invoice.find({}).populate("assignedTo", "fullName email").lean();
 
-    if (invoices.length === 0) {
+    if (!invoices.length) {
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
     }
 
-    // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
+    // 2️⃣ Chuẩn bị dữ liệu xuất ra Excel — giống cấu trúc bên exportInvoicesToExcelPrinted
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Mã Khách Hàng": invoice.invoiceNumber,
-      "Tên Khách Hàng": invoice.customerName,
-      "Số điện thoại": invoice.customerPhone,
-      "Địa Chỉ": invoice.customerAddress,
-      "Kỳ Thanh Toán": invoice.billing_period,
-      "Tổng Tiền": invoice.totalAmount,
+      "Mã Khách Hàng": invoice.invoiceNumber || "",
+      "Tên Khách Hàng": invoice.customerName || "",
+      "Địa Chỉ": invoice.customerAddress || "",
+      "Kỳ này": invoice.currentAmount ?? "",
+      "Kỳ trước": invoice.previousAmount ?? "",
+      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Số điện thoại": invoice.customerPhone || "",
+      "Ghi chú": invoice.note || "",
       "Nhân viên phụ trách":
         typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
           ? (invoice.assignedTo as IUser).fullName
           : "",
-
-      "Trạng Thái Thu Hộ": invoice.collectionStatus,
-      "Trạng Thái In": invoice.printStatus,
+      "Trạng Thái In": invoice.printStatus || "",
+      "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      "Tháng nợ": invoice.billing_period || "",
     }));
 
-    // 3. Tạo một workbook và worksheet mới từ dữ liệu JSON
+    // 3️⃣ Tạo workbook + worksheet
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
 
-    // Tùy chỉnh độ rộng cột (tùy chọn)
+    // 4️⃣ Cấu hình độ rộng cột — đồng bộ với hàm Printed
     worksheet["!cols"] = [
-      { wch: 10 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 35 },
-      { wch: 15 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
+      { wch: 5 }, // STT
+      { wch: 17 }, // Mã KH
+      { wch: 35 }, // Tên KH
+      { wch: 35 }, // Địa chỉ
+      { wch: 15 }, // Kỳ này
+      { wch: 15 }, // Kỳ trước
+      { wch: 20 }, // Tổng tiền nợ
+      { wch: 20 }, // SĐT
+      { wch: 25 }, // Ghi chú
+      { wch: 25 }, // Nhân viên
+      { wch: 15 }, // Trạng thái in
+      { wch: 15 }, // Trạng thái thu
+      { wch: 15 }, // Ngày thu
+      { wch: 15 }, // Tháng nợ
     ];
 
-    // 4. Ghi workbook vào một buffer (dữ liệu nhị phân)
+    // 5️⃣ Xuất ra buffer
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
 
-    // 5. Thiết lập HTTP Headers để trình duyệt hiểu đây là một file cần tải về
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="danh-sach-hoa-don-${Date.now()}.xlsx"`);
+    // 6️⃣ Gửi file về client
+    const fileName = `tat-ca-hoa-don-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-    // 6. Gửi buffer về cho client
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(buffer);
   } catch (error) {
-    console.error("Lỗi khi xuất file Excel:", error);
+    console.error("❌ Lỗi khi xuất file Excel:", error);
     res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
   }
 };
 
 export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) => {
-  const dateParam = req.query.date as string | undefined;
-
-  const startOfDay = new Date(dateParam!);
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const endOfDay = new Date(dateParam!);
-  endOfDay.setHours(23, 59, 59, 999);
-
   try {
-    // 1. Lấy tất cả dữ liệu hóa đơn từ database
-    // Dùng lean() để lấy object thuần túy, nhanh hơn
+    const dateParam = req.query.date as string | undefined;
+
+    // 🛑 Kiểm tra tham số ngày
+    if (!dateParam || isNaN(new Date(dateParam).getTime())) {
+      return res.status(400).json({ message: "Tham số 'date' không hợp lệ." });
+    }
+
+    // ✅ Chuẩn hóa thời gian trong ngày
+    const targetDate = new Date(dateParam);
+    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    // ✅ Lấy dữ liệu hóa đơn đã thu trong ngày
     const invoices: IInvoice[] = await Invoice.find({
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
       .populate("assignedTo", "fullName email")
       .lean();
-    if (invoices.length === 0) {
+
+    if (!invoices.length) {
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
     }
-    // 2. Chuẩn bị dữ liệu với tiêu đề tiếng Việt
+
+    // ✅ Chuẩn bị dữ liệu xuất ra Excel
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Số Hóa Đơn": invoice.invoiceNumber,
-      "Tên Khách Hàng": invoice.customerName,
-      "Số điện thoại": invoice.customerPhone,
-      "Địa Chỉ": invoice.customerAddress,
-      "Kỳ Thanh Toán": invoice.billing_period,
-      "Tổng Tiền": invoice.totalAmount,
+      "Mã Khách Hàng": invoice.invoiceNumber || "",
+      "Tên Khách Hàng": invoice.customerName || "",
+      "Địa Chỉ": invoice.customerAddress || "",
+      "Kỳ này": invoice.currentAmount ?? "",
+      "Kỳ trước": invoice.previousAmount ?? "",
+      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Số điện thoại": invoice.customerPhone || "",
+      "Ghi chú": invoice.note || "",
       "Nhân viên phụ trách":
         typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
           ? (invoice.assignedTo as IUser).fullName
           : "",
-
-      "Trạng Thái Thu Hộ": invoice.collectionStatus,
-      "Trạng Thái In": invoice.printStatus,
+      "Trạng Thái In": invoice.printStatus || "",
+      "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      "Tháng nợ": invoice.billing_period || "",
     }));
-    // 3. Tạo một workbook và worksheet mới từ dữ liệu JSON
+
+    // ✅ Tạo workbook + worksheet
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
-    // Tùy chỉnh độ rộng cột (tùy chọn)
+
+    // ✅ Cấu hình độ rộng cột
     worksheet["!cols"] = [
-      { wch: 10 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 35 },
-      { wch: 15 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
+      { wch: 5 }, // STT
+      { wch: 17 }, // Mã KH
+      { wch: 35 }, // Tên KH
+      { wch: 35 }, // Địa chỉ
+      { wch: 15 }, // Kỳ này
+      { wch: 15 }, // Kỳ trước
+      { wch: 20 }, // Tổng tiền nợ
+      { wch: 20 }, // SĐT
+      { wch: 25 }, // Ghi chú
+      { wch: 25 }, // Nhân viên
+      { wch: 15 }, // Trạng thái in
+      { wch: 15 }, // Trạng thái thu
+      { wch: 15 }, // Ngày thu
+      { wch: 15 }, // Tháng nợ
     ];
-    // 4. Ghi workbook vào một buffer (dữ liệu nhị phân)
+
+    // ✅ Xuất ra buffer và gửi về client
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
-    // 5. Thiết lập HTTP Headers để trình duyệt hiểu đây là một file cần tải về
+
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="danh-sach-hoa-don-${Date.now()}.xlsx"`);
-    // 6. Gửi buffer về cho client
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="danh-sach-hoa-don-${new Date().toISOString().slice(0, 10)}.xlsx"`
+    );
+
     res.send(buffer);
   } catch (error) {
     console.error("Lỗi khi xuất file Excel:", error);
