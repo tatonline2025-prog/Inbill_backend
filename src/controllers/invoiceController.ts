@@ -90,6 +90,90 @@ export const previewExcel = async (req: Request, res: Response) => {
   }
 };
 
+export const previewExcelProvince = async (req: Request, res: Response) => {
+  const now = new Date();
+  let month = now.getMonth();
+  let year = now.getFullYear();
+
+  if (month === 0) {
+    month = 12;
+    year -= 1;
+  }
+
+  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Không tìm thấy file nào được tải lên." });
+    }
+
+    const columnMapping = {
+      "Mã khách hàng": "invoiceNumber",
+      Tên: "customerName",
+      "Địa chỉ": "customerAddress",
+      "Tổng tiền": "totalAmount",
+      "Kỳ này": "currentAmount",
+      "Kỳ trước": "previousAmount",
+    };
+
+    const fileBuffer = req.file.buffer;
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+    console.log("Excel raw data:", jsonData);
+
+    const documentsToCreate = jsonData
+      .map((row) => {
+        const newDoc: any = {
+          billing_period,
+          issueDate: new Date(),
+          province: req.body.province, // 🔹 Gán province vào mỗi hóa đơn nếu cần
+        };
+
+        for (const excelHeader in columnMapping) {
+          if (row[excelHeader] !== undefined) {
+            const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
+            newDoc[dbField] = row[excelHeader];
+          }
+        }
+
+        if (!newDoc.invoiceNumber) return null;
+        return newDoc;
+      })
+      .filter(Boolean);
+
+    if (documentsToCreate.length === 0) {
+      return res.status(400).json({
+        message: `Không tìm thấy dữ liệu hợp lệ trong file Excel. Vui lòng kiểm tra lại tên các cột.`,
+      });
+    }
+
+    const bulkOps = documentsToCreate.map((doc) => ({
+      updateOne: {
+        filter: {
+          invoiceNumber: doc.invoiceNumber,
+          billing_period: doc.billing_period,
+        },
+        update: { $set: doc },
+        upsert: true,
+      },
+    }));
+
+    const result = await Invoice.bulkWrite(bulkOps);
+
+    res.status(200).json({
+      message: "Đã thêm/cập nhật hoá đơn thành công.",
+      inserted: result.upsertedCount,
+      modified: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("Lỗi khi xử lý file Excel:", error);
+    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+  }
+};
+
 export const fetchallInvoice = async (req: Request, res: Response) => {
   const now = new Date();
   let month = now.getMonth();

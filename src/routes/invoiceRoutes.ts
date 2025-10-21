@@ -14,6 +14,7 @@ import {
   fetchUncollectedInvoicesByUser,
   getInvoiceSummary,
   previewExcel,
+  previewExcelProvince,
   toggleInvoiceStatus,
   updateInvoice,
 } from "../controllers/invoiceController";
@@ -34,6 +35,13 @@ router.post(
   //   authenticate,
   upload.single("excelFile"), // 'excelFile' phải trùng với key trong FormData ở frontend
   previewExcel
+);
+
+router.post(
+  "/uploadWithProvince",
+  //   authenticate,
+  upload.single("file"), // 'excelFile' phải trùng với key trong FormData ở frontend
+  previewExcelProvince
 );
 
 router.get("/summary", getInvoiceSummary);
