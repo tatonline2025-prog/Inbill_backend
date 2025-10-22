@@ -262,11 +262,6 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.province = province;
     }
 
-    if (searchInvoiceNumber && searchInvoiceNumber !== "") {
-      const regex = new RegExp(searchInvoiceNumber as string, "i"); // không phân biệt hoa thường
-      match.$or = [{ invoiceNumber: regex }];
-    }
-
     if (collectionDate && collectionStatus === "collected") {
       // ⚙️ Nếu bạn lưu ngày thu ở dạng Date (ISO string)
       const start = new Date(collectionDate as string);
@@ -279,6 +274,12 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       // ⚠️ Nếu trong DB bạn lưu ngày thu là chuỗi (ví dụ "2025-10-22")
       // thì thay bằng dòng sau:
       // match.collectionDate = collectionDate;
+    }
+
+    if (searchInvoiceNumber && searchInvoiceNumber !== "") {
+      const regex = new RegExp(searchInvoiceNumber as string, "i");
+      if (!match.$and) match.$and = [];
+      match.$and.push({ invoiceNumber: regex });
     }
 
     // Pipeline aggregate
