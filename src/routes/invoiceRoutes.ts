@@ -63,6 +63,6 @@ router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
 
 router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 router.put("/update/:invoiceNumber", updateInvoice);
-router.patch("/:invoiceId/toggle", toggleInvoiceStatus);
+router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 
 export default router;

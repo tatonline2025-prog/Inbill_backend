@@ -5,7 +5,7 @@ import User from "../models/userModel";
 
 export const fetchallUser = async (req: Request, res: Response) => {
   try {
-    const user = await User.find({});
+    const user = await User.find({}).select("-password");
 
     res.status(200).json({ message: "Lấy user thành công!", user });
   } catch (error) {

@@ -35,6 +35,7 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         username: user.username,
         fullName: user.fullName,
+        province: user.province,
       },
       process.env.JWT_SECRET!,
       { expiresIn: "24h" } // Token sẽ hết hạn sau 8 tiếng
@@ -48,6 +49,7 @@ export const login = async (req: Request, res: Response) => {
         _id: user._id,
         username: user.username,
         fullName: user.fullName,
+        province: user.province,
         role: user.role,
       },
     });

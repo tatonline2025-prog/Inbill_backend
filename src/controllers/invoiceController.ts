@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import * as XLSX from "xlsx";
 import Invoice, { IInvoice } from "../models/invoiceModel";
-import { IUser } from "../models/userModel";
+import User, { IUser } from "../models/userModel";
+import mongoose from "mongoose";
 
 export const previewExcel = async (req: Request, res: Response) => {
   const now = new Date();
@@ -21,6 +22,9 @@ export const previewExcel = async (req: Request, res: Response) => {
     }
 
     const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) res.status(400).json({ message: "Không tìm thấy người dùng trong CSDL" });
 
     const columnMapping = {
       "Mã khách hàng": "invoiceNumber",
@@ -44,6 +48,7 @@ export const previewExcel = async (req: Request, res: Response) => {
         const newDoc: any = {
           billing_period,
           assignedTo: userId,
+          province: user?.province,
           issueDate: new Date(),
         };
 
@@ -122,7 +127,7 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     const worksheet = workbook.Sheets[sheetName];
     const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-    console.log("Excel raw data:", jsonData);
+    // console.log("Excel raw data:", jsonData);
 
     const documentsToCreate = jsonData
       .map((row) => {
@@ -175,22 +180,222 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 };
 
 export const fetchallInvoice = async (req: Request, res: Response) => {
-  const now = new Date();
-  let month = now.getMonth();
-  let year = now.getFullYear();
+  try {
+    const {
+      currentPage = "1",
+      invoicesPerPage = "20",
+      printStatus,
+      collectionStatus,
+      assignedUserId,
+      province,
+      searchInvoiceNumber,
+      userprovince,
+    } = req.query;
 
-  if (month === 0) {
-    month = 12;
-    year -= 1;
+    // console.log(
+    //   currentPage,
+    //   invoicesPerPage,
+    //   printStatus,
+    //   collectionStatus,
+    //   assignedUserId,
+    //   province,
+    //   searchInvoiceNumber,
+    //   userprovince
+    // );
+
+    const page = parseInt(currentPage as string, 10);
+    const limit = parseInt(invoicesPerPage as string, 10);
+    const skip = (page - 1) * limit;
+
+    // ✅ Xác định kỳ hóa đơn
+    const now = new Date();
+    let month = now.getMonth();
+    let year = now.getFullYear();
+
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+
+    const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+
+    // ✅ Pipeline aggregate
+    const match: any = { billing_period };
+
+    if (printStatus && printStatus !== "all") {
+      match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
+    }
+
+    if (collectionStatus && collectionStatus !== "all") {
+      match.collectionStatus = collectionStatus;
+    }
+
+    if (assignedUserId && assignedUserId !== "all") {
+      // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
+      match.$or = [
+        // 1️⃣ Hóa đơn đã được giao cho chính người đó
+        { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
+
+        // 2️⃣ Hóa đơn chưa giao + cùng tỉnh
+        {
+          $and: [
+            {
+              $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+            },
+            { province: userprovince }, // thay bằng biến tỉnh của user
+          ],
+        },
+      ];
+    } else {
+      // Nếu không truyền hoặc chọn "all" → lấy TẤT CẢ kể cả chưa giao
+      match.$or = [
+        { assignedTo: { $exists: true } },
+        { assignedTo: { $exists: false } },
+        { assignedTo: null },
+        { assignedTo: "" },
+      ];
+    }
+
+    if (province && province !== "all") {
+      match.province = province;
+    }
+
+    if (searchInvoiceNumber && searchInvoiceNumber !== "") {
+      const regex = new RegExp(searchInvoiceNumber as string, "i"); // không phân biệt hoa thường
+      match.$or = [{ invoiceNumber: regex }];
+    }
+
+    // Pipeline aggregate
+    const pipeline: any[] = [
+      { $match: match }, // dùng object match mới
+      {
+        $addFields: {
+          totalAmountNum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ["$totalAmount", "Không nợ cước"] },
+                  { $eq: ["$totalAmount", null] },
+                  { $eq: ["$totalAmount", ""] },
+                ],
+              },
+              0,
+              {
+                $toDouble: {
+                  $replaceAll: {
+                    input: "$totalAmount",
+                    find: ",",
+                    replacement: "",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          priority: {
+            $cond: [
+              {
+                $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+      { $sort: { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 } },
+      { $skip: skip },
+      { $limit: limit },
+    ];
+
+    const result = await Invoice.aggregate(pipeline);
+
+    const summaryAgg = [
+      { $match: match },
+      {
+        $addFields: {
+          totalAmountNum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ["$totalAmount", "Không nợ cước"] },
+                  { $eq: ["$totalAmount", null] },
+                  { $eq: ["$totalAmount", ""] },
+                ],
+              },
+              0,
+              {
+                $toDouble: {
+                  $replaceAll: { input: "$totalAmount", find: ",", replacement: "" },
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $facet: {
+          // ✅ Nhóm hóa đơn đã có người nhận
+          assigned: [
+            {
+              $match: {
+                $and: [{ assignedTo: { $ne: null } }, { assignedTo: { $ne: "" } }],
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalInvoices: { $sum: 1 },
+                sumTotalAmount: { $sum: "$totalAmountNum" },
+              },
+            },
+          ],
+          // ✅ Nhóm hóa đơn chưa giao (rỗng, null, chưa có field)
+          unassigned: [
+            {
+              $match: {
+                $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+              },
+            },
+            { $count: "unassignedInvoices" },
+          ],
+        },
+      },
+    ];
+
+    const summaryResult = await Invoice.aggregate(summaryAgg);
+
+    const assignedSummary = summaryResult[0]?.assigned?.[0] || {};
+    const unassignedCount = summaryResult[0]?.unassigned?.[0]?.unassignedInvoices || 0;
+
+    const totalInvoices = assignedSummary.totalInvoices || 0;
+    const sumTotalAmount = assignedSummary.sumTotalAmount || 0;
+
+    // ✅ Populate thủ công
+    await Invoice.populate(result, { path: "assignedTo", select: "fullName email" });
+
+    // ✅ Trả kết quả
+    res.status(200).json({
+      success: true,
+      data: result,
+      summary: {
+        totalInvoices: totalInvoices,
+        totalAmount: sumTotalAmount,
+        unassignedInvoices: unassignedCount,
+      },
+      pagination: {
+        currentPage: page,
+        invoicesPerPage: limit,
+        totalPages: Math.ceil(totalInvoices / limit),
+      },
+    });
+  } catch (error) {
+    console.error("fetchallInvoice error:", error);
+    res.status(500).json({ message: "Lỗi server" });
   }
-
-  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
-
-  const result = await Invoice.find({ billing_period })
-    .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
-    .sort({ billing_period: -1 });
-
-  res.status(200).json(result);
 };
 
 export const getInvoiceSummary = async (req: Request, res: Response) => {
@@ -634,7 +839,9 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     const invoiceId = req.params.invoiceId;
     const { field } = req.body; // "printStatus" | "collectionStatus"
 
-    console.log(invoiceId, field);
+    // console.log(req.user);
+
+    // console.log(invoiceId, field);
 
     if (!["printStatus", "collectionStatus"].includes(field)) {
       return res.status(400).json({ message: "Field không hợp lệ" });
@@ -642,6 +849,10 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
 
     const invoice = await Invoice.findById(invoiceId);
     if (!invoice) return res.status(404).json({ message: "Hóa đơn không tồn tại" });
+
+    if (!invoice.currentAmount || invoice.currentAmount.trim() === "") {
+      invoice.currentAmount = "0";
+    }
 
     // Toggle trạng thái
     if (field === "printStatus") {
@@ -651,10 +862,13 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
         // Nếu đang là "đã thu" -> chuyển thành "chưa thu"
         invoice.collectionStatus = "not_collected";
         invoice.collectionDate = null; // Xóa ngày thu
+        invoice.assignedTo = null; // ❌ Bỏ gán người thu
       } else {
         // Nếu đang là "chưa thu" -> chuyển thành "đã thu"
         invoice.collectionStatus = "collected";
         invoice.collectionDate = new Date(); // Ghi ngày thu hiện tại
+        invoice.province = req.user?.province as string; // Ghi tỉnh người thu
+        invoice.assignedTo = req.user?._id as unknown as mongoose.Types.ObjectId;
       }
     }
 
@@ -681,16 +895,16 @@ export const createInvoice = async (req: Request, res: Response) => {
       assignedTo,
     } = req.body.newInvoice;
 
-    console.log(
-      invoiceNumber,
-      customerName,
-      customerPhone,
-      customerAddress,
-      billing_period,
-      currentAmount,
-      previousAmount,
-      assignedTo
-    );
+    // console.log(
+    //   invoiceNumber,
+    //   customerName,
+    //   customerPhone,
+    //   customerAddress,
+    //   billing_period,
+    //   currentAmount,
+    //   previousAmount,
+    //   assignedTo
+    // );
 
     // ✅ Kiểm tra thiếu dữ liệu
     if (!invoiceNumber || !customerName || !billing_period || !currentAmount || !previousAmount) {
@@ -750,6 +964,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     const { invoiceNumber } = req.params;
 
     // console.log(
+    //   invoiceNumber,
     //   customerName,
     //   customerAddress,
     //   customerPhone,
@@ -783,6 +998,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
     invoice.assignedTo = finalAssignedTo;
     invoice.note = note !== undefined ? note : invoice.note;
 
+    // console.log(invoice);
+
     await invoice.save();
 
     return res.status(200).json({ message: "Cập nhật hoá đơn thành công.", invoice });
@@ -795,8 +1012,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
 export const deleteInvoice = async (req: Request, res: Response) => {
   try {
     const { invoiceNumber } = req.params;
-
-    // console.log(invoiceNumber);
 
     // Xoá toàn bộ hoá đơn theo kỳ thanh toán
     const result = await Invoice.findByIdAndDelete(invoiceNumber);
