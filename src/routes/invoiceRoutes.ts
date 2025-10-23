@@ -15,6 +15,7 @@ import {
   getInvoiceSummary,
   previewExcel,
   previewExcelProvince,
+  searchInvoice,
   toggleInvoiceStatus,
   updateInvoice,
 } from "../controllers/invoiceController";
@@ -45,6 +46,7 @@ router.post(
 );
 
 router.get("/summary", getInvoiceSummary);
+router.get("/search", searchInvoice);
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);

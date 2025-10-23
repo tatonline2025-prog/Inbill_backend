@@ -415,6 +415,57 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
   }
 };
 
+export const searchInvoice = async (req: Request, res: Response) => {
+  try {
+    const {
+      collectionStatus, // "collected" | "not_collected" | "all"
+      assignedUserId, // id của người thu
+      userprovince, // tỉnh của người dùng
+      searchInvoiceNumber, // mã hóa đơn
+    } = req.query;
+
+    // console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber);
+
+    // ⚙️ Tạo object điều kiện tìm kiếm cơ bản
+    const match: any = {};
+
+    // ✅ 1. Lọc theo trạng thái thu tiền
+    if (collectionStatus && collectionStatus !== "all") {
+      match.collectionStatus = collectionStatus;
+    }
+
+    // ✅ 2. Lọc theo người phụ trách hoặc hoá đơn chưa có người phụ trách cùng tỉnh
+    if (assignedUserId && assignedUserId !== "all") {
+      match.$or = [
+        { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
+        {
+          $and: [{ $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }] }, { province: userprovince }],
+        },
+      ];
+    }
+
+    // ✅ 4. Lọc theo mã hóa đơn
+    if (searchInvoiceNumber && searchInvoiceNumber !== "") {
+      match.invoiceNumber = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
+    }
+
+    // ✅ Thực thi truy vấn
+    const invoices = await Invoice.find(match)
+      .populate("assignedTo", "fullName email")
+      .sort({ issueDate: -1 })
+      .limit(20); // giới hạn kết quả trả về để tránh quá tải
+
+    res.status(200).json({
+      success: true,
+      data: invoices,
+      count: invoices.length,
+    });
+  } catch (error) {
+    console.error("searchInvoice error:", error);
+    res.status(500).json({ success: false, message: "Lỗi server khi tìm kiếm hóa đơn" });
+  }
+};
+
 export const getInvoiceSummary = async (req: Request, res: Response) => {
   try {
     // Dùng aggregate để tính tổng hợp
