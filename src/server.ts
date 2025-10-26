@@ -7,7 +7,7 @@ import { connectDB } from "./config/db";
 import userRoute from "./routes/userRoute";
 import authRoute from "./routes/authRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
-import { removeInvoice } from "./controllers/invoiceController";
+import { removeInvoice, resetInvoices } from "./controllers/invoiceController";
 
 dotenv.config();
 connectDB();
@@ -45,3 +45,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 // removeInvoice();
+
+// resetInvoices();

@@ -179,10 +179,255 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
   }
 };
 
+// export const fetchallInvoice = async (req: Request, res: Response) => {
+//   try {
+//     const {
+//       currentPage = "1",
+//       invoicesPerPage = "20",
+//       printStatus,
+//       collectionStatus,
+//       assignedUserId,
+//       province,
+//       searchInvoiceNumber,
+//       userprovince,
+//       collectionDate,
+//     } = req.query;
+
+//     console.log(
+//       currentPage,
+//       invoicesPerPage,
+//       printStatus,
+//       collectionStatus,
+//       assignedUserId,
+//       province,
+//       searchInvoiceNumber,
+//       userprovince,
+//       collectionDate
+//     );
+
+//     const page = parseInt(currentPage as string, 10);
+//     const limit = parseInt(invoicesPerPage as string, 10);
+//     const skip = (page - 1) * limit;
+
+//     // ✅ Xác định kỳ hóa đơn
+//     const now = new Date();
+//     let month = now.getMonth();
+//     let year = now.getFullYear();
+
+//     if (month === 0) {
+//       month = 12;
+//       year -= 1;
+//     }
+
+//     const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+
+//     // ✅ Pipeline aggregate
+//     const match: any = { billing_period };
+
+//     if (printStatus && printStatus !== "all") {
+//       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
+//     }
+
+//     if (collectionStatus && collectionStatus !== "all") {
+//       match.collectionStatus = collectionStatus;
+//     }
+
+//     if (assignedUserId && assignedUserId !== "all" && assignedUserId !== "no_one") {
+//       // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
+//       match.$or = [
+//         // 1️⃣ Hóa đơn đã được giao cho chính người đó
+//         { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
+
+//         // 2️⃣ Hóa đơn chưa giao + cùng tỉnh
+//         {
+//           $and: [
+//             {
+//               $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+//             },
+//             { province: userprovince }, // thay bằng biến tỉnh của user
+//           ],
+//         },
+//       ];
+//     } else if (assignedUserId === "no_one") {
+//       // ✅ Nếu chọn "no_one" → chỉ lấy hóa đơn chưa giao (bỏ điều kiện tỉnh nếu bạn không muốn lọc theo tỉnh)
+//       match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+//     } else {
+//       // Nếu không truyền hoặc chọn "all" → lấy TẤT CẢ kể cả chưa giao
+//       match.$or = [
+//         { assignedTo: { $exists: true } },
+//         { assignedTo: { $exists: false } },
+//         { assignedTo: null },
+//         { assignedTo: "" },
+//       ];
+//     }
+
+//     if (province && province !== "all") {
+//       match.province = province;
+//     }
+
+//     if (collectionDate && collectionStatus === "collected") {
+//       // ⚙️ Nếu bạn lưu ngày thu ở dạng Date (ISO string)
+//       const start = new Date(collectionDate as string);
+//       start.setHours(0, 0, 0, 0);
+//       const end = new Date(collectionDate as string);
+//       end.setHours(23, 59, 59, 999);
+
+//       match.collectionDate = { $gte: start, $lte: end };
+
+//       // ⚠️ Nếu trong DB bạn lưu ngày thu là chuỗi (ví dụ "2025-10-22")
+//       // thì thay bằng dòng sau:
+//       // match.collectionDate = collectionDate;
+//     }
+
+//     if (searchInvoiceNumber && searchInvoiceNumber !== "") {
+//       const regex = new RegExp(searchInvoiceNumber as string, "i");
+//       if (!match.$and) match.$and = [];
+//       match.$and.push({ invoiceNumber: regex });
+//     }
+
+//     // Pipeline aggregate
+//     const pipeline: any[] = [
+//       { $match: match }, // dùng object match mới
+//       {
+//         $addFields: {
+//           totalAmountNum: {
+//             $cond: [
+//               {
+//                 $or: [
+//                   { $eq: ["$totalAmount", "Không nợ cước"] },
+//                   { $eq: ["$totalAmount", null] },
+//                   { $eq: ["$totalAmount", ""] },
+//                 ],
+//               },
+//               0,
+//               {
+//                 $toDouble: {
+//                   $replaceAll: {
+//                     input: "$totalAmount",
+//                     find: ",",
+//                     replacement: "",
+//                   },
+//                 },
+//               },
+//             ],
+//           },
+//         },
+//       },
+//       {
+//         $addFields: {
+//           priority: {
+//             $cond: [
+//               {
+//                 $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }],
+//               },
+//               1,
+//               0,
+//             ],
+//           },
+//         },
+//       },
+//       { $sort: { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 } },
+//       { $skip: skip },
+//       { $limit: limit },
+//     ];
+
+//     const result = await Invoice.aggregate(pipeline);
+
+//     const summaryAgg = [
+//       { $match: match },
+//       {
+//         $addFields: {
+//           totalAmountNum: {
+//             $cond: [
+//               {
+//                 $or: [
+//                   { $eq: ["$totalAmount", "Không nợ cước"] },
+//                   { $eq: ["$totalAmount", null] },
+//                   { $eq: ["$totalAmount", ""] },
+//                 ],
+//               },
+//               0,
+//               {
+//                 $toDouble: {
+//                   $replaceAll: { input: "$totalAmount", find: ",", replacement: "" },
+//                 },
+//               },
+//             ],
+//           },
+//         },
+//       },
+//       {
+//         $facet: {
+//           // ✅ Nhóm hóa đơn đã có người nhận
+//           assigned: [
+//             {
+//               $match: {
+//                 $and: [{ assignedTo: { $ne: null } }, { assignedTo: { $ne: "" } }],
+//               },
+//             },
+//             {
+//               $group: {
+//                 _id: null,
+//                 totalInvoices: { $sum: 1 },
+//                 sumTotalAmount: { $sum: "$totalAmountNum" },
+//               },
+//             },
+//           ],
+//           // ✅ Nhóm hóa đơn chưa giao (rỗng, null, chưa có field)
+//           unassigned: [
+//             {
+//               $match: {
+//                 $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+//               },
+//             },
+//             {
+//               $group: {
+//                 _id: null,
+//                 totalInvoices: { $sum: 1 },
+//                 sumTotalAmount: { $sum: "$totalAmountNum" },
+//               },
+//             },
+//           ],
+//         },
+//       },
+//     ];
+
+//     const summaryResult = await Invoice.aggregate(summaryAgg);
+
+//     const assignedSummary = summaryResult[0]?.assigned?.[0] || {};
+//     const unassignedCount = summaryResult[0]?.unassigned?.[0]?.totalInvoices || 0;
+
+//     const totalInvoices = assignedSummary.totalInvoices || 0;
+//     const sumTotalAmount = assignedSummary.sumTotalAmount + summaryResult[0]?.unassigned?.[0]?.sumTotalAmount || 0;
+
+//     // ✅ Populate thủ công
+//     await Invoice.populate(result, { path: "assignedTo", select: "fullName email" });
+
+//     // ✅ Trả kết quả
+//     res.status(200).json({
+//       success: true,
+//       data: result,
+//       summary: {
+//         totalInvoices: totalInvoices,
+//         totalAmount: sumTotalAmount,
+//         unassignedInvoices: unassignedCount,
+//       },
+//       pagination: {
+//         currentPage: page,
+//         invoicesPerPage: limit,
+//         totalPages: Math.ceil((totalInvoices + unassignedCount) / limit),
+//       },
+//     });
+//   } catch (error) {
+//     console.error("fetchallInvoice error:", error);
+//     res.status(500).json({ message: "Lỗi server" });
+//   }
+// };
+
 export const fetchallInvoice = async (req: Request, res: Response) => {
   try {
     const {
-      currentPage = "1",
+      lastId,
       invoicesPerPage = "20",
       printStatus,
       collectionStatus,
@@ -193,68 +438,55 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       collectionDate,
     } = req.query;
 
-    // console.log(
-    //   currentPage,
-    //   invoicesPerPage,
-    //   printStatus,
-    //   collectionStatus,
-    //   assignedUserId,
-    //   province,
-    //   searchInvoiceNumber,
-    //   userprovince,
-    //   collectionDate
-    // );
-
-    const page = parseInt(currentPage as string, 10);
     const limit = parseInt(invoicesPerPage as string, 10);
-    const skip = (page - 1) * limit;
 
-    // ✅ Xác định kỳ hóa đơn
+    // Xác định kỳ hóa đơn
     const now = new Date();
     let month = now.getMonth();
     let year = now.getFullYear();
-
     if (month === 0) {
       month = 12;
       year -= 1;
     }
-
     const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
 
-    // ✅ Pipeline aggregate
+    // Build filter
     const match: any = { billing_period };
 
     if (printStatus && printStatus !== "all") {
       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
     }
-
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
     }
 
-    if (assignedUserId && assignedUserId !== "all") {
-      // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
+    // assignedUserId filter an toàn
+    if (assignedUserId && assignedUserId !== "all" && assignedUserId !== "no_one") {
       match.$or = [
-        // 1️⃣ Hóa đơn đã được giao cho chính người đó
-        { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
-
-        // 2️⃣ Hóa đơn chưa giao + cùng tỉnh
+        {
+          // Chỉ cast sang ObjectId khi giá trị hợp lệ
+          assignedTo: mongoose.Types.ObjectId.isValid(assignedUserId as string)
+            ? new mongoose.Types.ObjectId(assignedUserId as string)
+            : undefined,
+        },
         {
           $and: [
             {
-              $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+              $or: [
+                { assignedTo: { $exists: false } },
+                { assignedTo: null },
+                { $and: [{ assignedTo: { $type: "string" } }, { assignedTo: "" }] },
+              ],
             },
-            { province: userprovince }, // thay bằng biến tỉnh của user
+            { province: userprovince },
           ],
         },
       ];
-    } else {
-      // Nếu không truyền hoặc chọn "all" → lấy TẤT CẢ kể cả chưa giao
+    } else if (assignedUserId === "no_one") {
       match.$or = [
-        { assignedTo: { $exists: true } },
         { assignedTo: { $exists: false } },
         { assignedTo: null },
-        { assignedTo: "" },
+        { $and: [{ assignedTo: { $type: "string" } }, { assignedTo: "" }] },
       ];
     }
 
@@ -263,17 +495,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     if (collectionDate && collectionStatus === "collected") {
-      // ⚙️ Nếu bạn lưu ngày thu ở dạng Date (ISO string)
       const start = new Date(collectionDate as string);
       start.setHours(0, 0, 0, 0);
       const end = new Date(collectionDate as string);
       end.setHours(23, 59, 59, 999);
-
       match.collectionDate = { $gte: start, $lte: end };
-
-      // ⚠️ Nếu trong DB bạn lưu ngày thu là chuỗi (ví dụ "2025-10-22")
-      // thì thay bằng dòng sau:
-      // match.collectionDate = collectionDate;
     }
 
     if (searchInvoiceNumber && searchInvoiceNumber !== "") {
@@ -282,9 +508,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.$and.push({ invoiceNumber: regex });
     }
 
-    // Pipeline aggregate
+    // Cursor-based pagination: lấy _id > lastId
+    if (lastId && mongoose.Types.ObjectId.isValid(lastId as string)) {
+      match._id = { $gt: new mongoose.Types.ObjectId(lastId as string) };
+    }
+
+    // Pipeline chính
     const pipeline: any[] = [
-      { $match: match }, // dùng object match mới
+      { $match: match },
       {
         $addFields: {
           totalAmountNum: {
@@ -297,15 +528,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
                 ],
               },
               0,
-              {
-                $toDouble: {
-                  $replaceAll: {
-                    input: "$totalAmount",
-                    find: ",",
-                    replacement: "",
-                  },
-                },
-              },
+              { $toDouble: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } } },
             ],
           },
         },
@@ -313,23 +536,17 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       {
         $addFields: {
           priority: {
-            $cond: [
-              {
-                $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }],
-              },
-              1,
-              0,
-            ],
+            $cond: [{ $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }] }, 1, 0],
           },
         },
       },
       { $sort: { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 } },
-      { $skip: skip },
       { $limit: limit },
     ];
 
-    const result = await Invoice.aggregate(pipeline);
+    const invoices = await Invoice.aggregate(pipeline).allowDiskUse(true);
 
+    // Tính summary (không phân trang)
     const summaryAgg = [
       { $match: match },
       {
@@ -344,69 +561,57 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
                 ],
               },
               0,
-              {
-                $toDouble: {
-                  $replaceAll: { input: "$totalAmount", find: ",", replacement: "" },
-                },
-              },
+              { $toDouble: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } } },
             ],
           },
         },
       },
       {
         $facet: {
-          // ✅ Nhóm hóa đơn đã có người nhận
           assigned: [
-            {
-              $match: {
-                $and: [{ assignedTo: { $ne: null } }, { assignedTo: { $ne: "" } }],
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalInvoices: { $sum: 1 },
-                sumTotalAmount: { $sum: "$totalAmountNum" },
-              },
-            },
+            { $match: { assignedTo: { $type: "objectId" } } },
+            { $group: { _id: null, totalInvoices: { $sum: 1 }, sumTotalAmount: { $sum: "$totalAmountNum" } } },
           ],
-          // ✅ Nhóm hóa đơn chưa giao (rỗng, null, chưa có field)
           unassigned: [
             {
               $match: {
-                $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
+                $or: [
+                  { assignedTo: { $exists: false } },
+                  { assignedTo: null },
+                  { $and: [{ assignedTo: { $type: "string" } }, { assignedTo: "" }] },
+                ],
               },
             },
-            { $count: "unassignedInvoices" },
+            { $group: { _id: null, totalInvoices: { $sum: 1 }, sumTotalAmount: { $sum: "$totalAmountNum" } } },
           ],
         },
       },
     ];
 
-    const summaryResult = await Invoice.aggregate(summaryAgg);
-
+    const summaryResult = await Invoice.aggregate(summaryAgg).allowDiskUse(true);
     const assignedSummary = summaryResult[0]?.assigned?.[0] || {};
-    const unassignedCount = summaryResult[0]?.unassigned?.[0]?.unassignedInvoices || 0;
+    const unassignedSummary = summaryResult[0]?.unassigned?.[0] || {};
 
-    const totalInvoices = assignedSummary.totalInvoices || 0;
-    const sumTotalAmount = assignedSummary.sumTotalAmount || 0;
+    const totalInvoices = (assignedSummary.totalInvoices || 0) + (unassignedSummary.totalInvoices || 0);
+    const sumTotalAmount = (assignedSummary.sumTotalAmount || 0) + (unassignedSummary.sumTotalAmount || 0);
 
-    // ✅ Populate thủ công
-    await Invoice.populate(result, { path: "assignedTo", select: "fullName email" });
+    const totalPages = Math.ceil(totalInvoices / limit);
 
-    // ✅ Trả kết quả
+    // Populate assignedTo
+    await Invoice.populate(invoices, { path: "assignedTo", select: "fullName email" });
+
     res.status(200).json({
       success: true,
-      data: result,
+      data: invoices,
       summary: {
-        totalInvoices: totalInvoices,
+        totalInvoices,
         totalAmount: sumTotalAmount,
-        unassignedInvoices: unassignedCount,
+        unassignedInvoices: unassignedSummary.totalInvoices || 0,
       },
       pagination: {
-        currentPage: page,
+        lastId: invoices[invoices.length - 1]?._id || null,
         invoicesPerPage: limit,
-        totalPages: Math.ceil(totalInvoices / limit),
+        totalPages,
       },
     });
   } catch (error) {
@@ -467,9 +672,20 @@ export const searchInvoice = async (req: Request, res: Response) => {
 };
 
 export const getInvoiceSummary = async (req: Request, res: Response) => {
+  const { userId } = req.query;
+
   try {
+    const matchStage: any = {};
+
+    // ✅ Nếu có userId → chỉ lấy hóa đơn của người đó
+    if (userId && typeof userId === "string" && mongoose.Types.ObjectId.isValid(userId)) {
+      matchStage.assignedTo = new mongoose.Types.ObjectId(userId);
+    }
+
     // Dùng aggregate để tính tổng hợp
     const result = await Invoice.aggregate([
+      ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
+
       {
         $lookup: {
           from: "users",
@@ -1100,6 +1316,18 @@ export const removeInvoice = async () => {
     const result = await Invoice.deleteMany({ billing_period });
 
     console.log("Đã xoá thành công");
+  } catch (error) {
+    console.error("Lỗi khi xoá hoá đơn:", error);
+  }
+};
+
+export const resetInvoices = async () => {
+  try {
+    console.log("Tiến trình đang thực hiện");
+
+    const result = await Invoice.updateMany({}, { $set: { assignedTo: null } });
+
+    console.log("Đã reset thành công");
   } catch (error) {
     console.error("Lỗi khi xoá hoá đơn:", error);
   }

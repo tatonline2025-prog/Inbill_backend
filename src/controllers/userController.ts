@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 
 import User from "../models/userModel";
+import Invoice from "../models/invoiceModel";
 
 export const fetchallUser = async (req: Request, res: Response) => {
   try {
@@ -79,9 +80,11 @@ export const deleteUser = async (req: Request, res: Response) => {
     // ✅ Tiến hành xoá
     await User.findByIdAndDelete(userId);
 
+    await Invoice.updateMany({ assignedTo: userId }, { $set: { assignedTo: null } });
+
     return res.status(200).json({
       success: true,
-      message: "Đã xoá tài khoản người dùng thành công.",
+      message: "Đã xoá tài khoản người dùng và các thông tin phụ trách liên quan thành công.",
     });
   } catch (error) {
     console.error("Lỗi khi xoá user:", error);
