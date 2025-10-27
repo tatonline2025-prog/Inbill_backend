@@ -197,17 +197,17 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       collectionDate,
     } = req.query;
 
-    console.log(
-      currentPage,
-      invoicesPerPage,
-      printStatus,
-      collectionStatus,
-      assignedUserId,
-      province,
-      searchInvoiceNumber,
-      userprovince,
-      collectionDate
-    );
+    // console.log(
+    //   currentPage,
+    //   invoicesPerPage,
+    //   printStatus,
+    //   collectionStatus,
+    //   assignedUserId,
+    //   province,
+    //   searchInvoiceNumber,
+    //   userprovince,
+    //   collectionDate
+    // );
 
     const page = parseInt(currentPage as string, 10);
     const limit = parseInt(invoicesPerPage as string, 10);
@@ -270,17 +270,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     if (collectionDate && collectionStatus === "collected") {
-      // ⚙️ Nếu bạn lưu ngày thu ở dạng Date (ISO string)
-      const start = new Date(collectionDate as string);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(collectionDate as string);
-      end.setHours(23, 59, 59, 999);
+      const dateStr = String(collectionDate);
 
-      match.collectionDate = { $gte: start, $lte: end };
+      dayjs.extend(utc);
+      dayjs.extend(timezone);
 
-      // ⚠️ Nếu trong DB bạn lưu ngày thu là chuỗi (ví dụ "2025-10-22")
-      // thì thay bằng dòng sau:
-      // match.collectionDate = collectionDate;
+      const startOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+      const endOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+      match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
     if (searchInvoiceNumber && searchInvoiceNumber !== "") {
