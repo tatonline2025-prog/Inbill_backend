@@ -14,6 +14,7 @@ connectDB();
 
 const allowedOrigins = [
   "http://localhost:3000", // frontend dev
+  "http://localhost:8081", // frontend dev
   "https://inbill.dvtienich.vn", // frontend production
 ];
 

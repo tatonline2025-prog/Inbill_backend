@@ -1373,7 +1373,9 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
       province: userprovince,
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
-    }).sort({ collectionDate: -1 });
+    })
+      .populate("assignedTo", "fullName email")
+      .sort({ collectionDate: -1 });
 
     res.status(200).json({ data: invoices });
   } catch (error) {
