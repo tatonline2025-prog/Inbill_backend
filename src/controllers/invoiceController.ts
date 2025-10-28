@@ -671,7 +671,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
 
     // ✅ Thực thi truy vấn
     const invoices = await Invoice.find(match)
-      .populate("assignedTo", "fullName email")
+      .populate("assignedTo", "fullName email phone")
       .sort({ issueDate: -1 })
       .limit(20); // giới hạn kết quả trả về để tránh quá tải
 
@@ -778,7 +778,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id })
-      .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName email phone") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 4️⃣ Trả về dữ liệu
@@ -816,7 +816,7 @@ export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, billing_period })
-      .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName email phone") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 4️⃣ Trả về dữ liệu
@@ -843,7 +843,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "not_collected" })
-      .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName email phone") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 3️⃣ Nếu không có hoá đơn nào
@@ -878,7 +878,7 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "collected" })
-      .populate("assignedTo", "fullName email") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName email phone") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 3️⃣ Nếu không có hoá đơn nào
@@ -918,7 +918,7 @@ export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response
       assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "not_collected",
-    }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
+    }).populate("assignedTo", "fullName email phone"); // Nếu muốn lấy thêm thông tin người được chỉ định
 
     // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices) {
@@ -957,7 +957,7 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
       assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "collected",
-    }).populate("assignedTo", "fullName email"); // Nếu muốn lấy thêm thông tin người được chỉ định
+    }).populate("assignedTo", "fullName email phone"); // Nếu muốn lấy thêm thông tin người được chỉ định
 
     // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices) {
@@ -982,7 +982,7 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
     // 1️⃣ Lấy tất cả dữ liệu hóa đơn
-    const invoices: IInvoice[] = await Invoice.find({}).populate("assignedTo", "fullName email").lean();
+    const invoices: IInvoice[] = await Invoice.find({}).populate("assignedTo", "fullName email phone").lean();
 
     if (!invoices.length) {
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
@@ -1066,7 +1066,7 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
-      .populate("assignedTo", "fullName email")
+      .populate("assignedTo", "fullName email phone")
       .lean();
 
     if (!invoices.length) {
@@ -1374,7 +1374,7 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
-      .populate("assignedTo", "fullName email")
+      .populate("assignedTo", "fullName email phone")
       .sort({ collectionDate: -1 });
 
     res.status(200).json({ data: invoices });
