@@ -1166,7 +1166,9 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
         // Nếu đang là "chưa thu" -> chuyển thành "đã thu"
         invoice.collectionStatus = "collected";
         invoice.collectionDate = new Date(); // Ghi ngày thu hiện tại
-        invoice.province = req.user?.province as string; // Ghi tỉnh người thu
+        if (typeof req.user?.province === "string" && req.user.province.trim() !== "") {
+          invoice.province = req.user.province;
+        }
         invoice.assignedTo = req.user?._id as unknown as mongoose.Types.ObjectId;
       }
     }
