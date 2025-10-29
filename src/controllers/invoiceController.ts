@@ -10,7 +10,7 @@ import timezone from "dayjs/plugin/timezone";
 
 export const previewExcel = async (req: Request, res: Response) => {
   const now = new Date();
-  let month = now.getMonth();
+  let month = now.getMonth() + 1;
   let year = now.getFullYear();
 
   if (month === 0) {
