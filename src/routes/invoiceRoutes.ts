@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import {
   createInvoice,
+  deleteByBillingPeriod,
   deleteInvoice,
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
@@ -55,6 +56,7 @@ router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
+router.delete("/deleteByBillingPeriod", deleteByBillingPeriod);
 
 router.post("/creatnew", authenticate, createInvoice);
 

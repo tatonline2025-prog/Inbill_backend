@@ -100,16 +100,16 @@ export const previewExcel = async (req: Request, res: Response) => {
 };
 
 export const previewExcelProvince = async (req: Request, res: Response) => {
-  const now = new Date();
-  let month = now.getMonth();
-  let year = now.getFullYear();
+  // const now = new Date();
+  // let month = now.getMonth();
+  // let year = now.getFullYear();
 
-  if (month === 0) {
-    month = 12;
-    year -= 1;
-  }
+  // if (month === 0) {
+  //   month = 12;
+  //   year -= 1;
+  // }
 
-  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+  // const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
 
   try {
     if (!req.file) {
@@ -136,7 +136,7 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     const documentsToCreate = jsonData
       .map((row) => {
         const newDoc: any = {
-          billing_period,
+          billing_period: req.body.billing_period,
           issueDate: new Date(),
           province: req.body.province, // 🔹 Gán province vào mỗi hóa đơn nếu cần
         };
@@ -213,20 +213,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const limit = parseInt(invoicesPerPage as string, 10);
     const skip = (page - 1) * limit;
 
-    // ✅ Xác định kỳ hóa đơn
-    const now = new Date();
-    let month = now.getMonth();
-    let year = now.getFullYear();
-
-    if (month === 0) {
-      month = 12;
-      year -= 1;
-    }
-
-    const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
-
     // ✅ Pipeline aggregate
-    const match: any = { billing_period };
+    const match: any = {};
 
     if (printStatus && printStatus !== "all") {
       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
@@ -396,10 +384,17 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const summaryResult = await Invoice.aggregate(summaryAgg);
 
     const assignedSummary = summaryResult[0]?.assigned?.[0] || {};
-    const unassignedCount = summaryResult[0]?.unassigned?.[0]?.totalInvoices || 0;
+    const unassignedSummary = summaryResult[0]?.unassigned?.[0] || {};
 
-    const totalInvoices = assignedSummary.totalInvoices || 0;
-    const sumTotalAmount = assignedSummary.sumTotalAmount + summaryResult[0]?.unassigned?.[0]?.sumTotalAmount || 0;
+    // ✅ Tính toán từng giá trị với (|| 0)
+    const assignedCount = assignedSummary.totalInvoices || 0;
+    const unassignedCount = unassignedSummary.totalInvoices || 0; // Giống code cũ của bạn
+
+    const assignedAmount = assignedSummary.sumTotalAmount || 0;
+    const unassignedAmount = unassignedSummary.sumTotalAmount || 0;
+    // ✅ Cộng các giá trị đã được đảm bảo là số
+    const totalInvoices = assignedCount + unassignedCount;
+    const sumTotalAmount = assignedAmount + unassignedAmount;
 
     // ✅ Populate thủ công
     await Invoice.populate(result, { path: "assignedTo", select: "fullName email" });
@@ -1261,6 +1256,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
       totalAmount,
       note,
       assignedTo,
+      billing_period,
     } = req.body.formData;
     const { invoiceNumber } = req.params;
 
@@ -1276,7 +1272,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     //   assignedTo
     // );
 
-    if (!invoiceNumber || !customerName || !currentAmount || !previousAmount || !totalAmount) {
+    if (!invoiceNumber || !customerName || !currentAmount || !previousAmount || !totalAmount || !billing_period) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
@@ -1297,6 +1293,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     invoice.previousAmount = previousAmount;
     invoice.totalAmount = String(Number(currentAmount) + Number(previousAmount));
     invoice.assignedTo = finalAssignedTo;
+    invoice.billing_period = billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
 
     // console.log(invoice);
@@ -1383,5 +1380,25 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Lỗi searchByDate:", error);
     res.status(500).json({ message: "Lỗi khi tìm hóa đơn theo ngày." });
+  }
+};
+
+export const deleteByBillingPeriod = async (req: Request, res: Response) => {
+  try {
+    const { billing_period } = req.query; // dạng "03/2025"
+
+    if (!billing_period) {
+      return res.status(400).json({ message: "Thiếu kỳ hoá đơn!" });
+    }
+
+    const result = await Invoice.deleteMany({ billing_period: billing_period });
+
+    return res.status(200).json({
+      message: `Đã xoá ${result.deletedCount} hoá đơn của kỳ ${billing_period}`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Lỗi xoá hoá đơn theo kỳ:", error);
+    return res.status(500).json({ message: "Lỗi server khi xoá hoá đơn!" });
   }
 };
