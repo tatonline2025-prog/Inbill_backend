@@ -56,7 +56,7 @@ router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
-router.delete("/deleteByBillingPeriod", deleteByBillingPeriod);
+router.delete("/deleteByBillingPeriod", authenticate, deleteByBillingPeriod);
 
 router.post("/creatnew", authenticate, createInvoice);
 
