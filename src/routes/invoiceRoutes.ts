@@ -48,7 +48,7 @@ router.post(
 );
 
 router.get("/summary", getInvoiceSummary);
-router.get("/search", searchInvoice);
+router.get("/search", authenticate, searchInvoice);
 
 router.get("/fetchall", fetchallInvoice);
 router.get("/searchByDate", searchInvoicesByDate);

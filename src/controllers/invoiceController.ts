@@ -628,7 +628,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
     }
 
     // ✅ 2. Lọc theo người phụ trách hoặc hoá đơn chưa có người phụ trách cùng tỉnh
-    if (assignedUserId && assignedUserId !== "all") {
+    if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
       match.$or = [
         { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
         {
