@@ -133,8 +133,6 @@ export const changepassword = async (req: Request, res: Response) => {
   try {
     const { newpass } = req.body;
 
-    console.log();
-
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,

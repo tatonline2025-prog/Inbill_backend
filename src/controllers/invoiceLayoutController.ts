@@ -16,13 +16,30 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Không xác thực được người dùng" });
     }
 
-    // Tìm layout hiện có (layout chung)
+    // 🔧 Ghi đè label nếu có textOverride
+    const processedLayout = layout.map((item: any) => {
+      let updatedLabel = item.label;
+
+      if (
+        typeof item.textOverride === "string" &&
+        item.textOverride.trim() !== "" &&
+        item.textOverride.trim() !== item.label
+      ) {
+        updatedLabel = item.textOverride.trim();
+      }
+
+      // Trả về object mới, đã xóa textOverride
+      const { textOverride, ...rest } = item;
+      return { ...rest, label: updatedLabel };
+    });
+
+    // Tìm layout hiện có
     const existingLayout = await invoiceLayoutModel.findOne();
 
     if (existingLayout) {
-      existingLayout.layout = layout;
+      existingLayout.layout = processedLayout;
       existingLayout.lastEditedBy = {
-        userId: new mongoose.Types.ObjectId(user._id), // ✅ ép kiểu chuẩn
+        userId: new mongoose.Types.ObjectId(user._id),
         username: user.username,
       };
       existingLayout.updatedAt = new Date();
@@ -33,9 +50,8 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
         data: existingLayout,
       });
     } else {
-      // Nếu chưa có layout nào thì tạo mới
       const newLayout = new invoiceLayoutModel({
-        layout,
+        layout: processedLayout,
         lastEditedBy: { userId: user._id, username: user.username },
       });
       await newLayout.save();
