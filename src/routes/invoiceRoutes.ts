@@ -4,6 +4,7 @@ import {
   createInvoice,
   deleteByBillingPeriod,
   deleteInvoice,
+  exportExcelByUser,
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
   fetchAllColInvoiceByUser,
@@ -66,6 +67,7 @@ router.post("/creatnew", authenticate, createInvoice);
 
 router.get("/exportExcel", exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
+router.get("/exportExcelByUser", exportExcelByUser);
 
 router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 router.put("/update/:invoiceNumber", updateInvoice);

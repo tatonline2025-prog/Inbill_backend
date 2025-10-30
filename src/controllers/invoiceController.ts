@@ -389,7 +389,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       pagination: {
         currentPage: page,
         invoicesPerPage: limit,
-        totalPages: Math.ceil((totalInvoices + unassignedCount) / limit),
+        totalPages: Math.ceil(totalInvoices / limit),
       },
     });
   } catch (error) {
@@ -1098,6 +1098,93 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       "Content-Disposition",
       `attachment; filename="danh-sach-hoa-don-${new Date().toISOString().slice(0, 10)}.xlsx"`
     );
+
+    res.send(buffer);
+  } catch (error) {
+    console.error("Lỗi khi xuất file Excel:", error);
+    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+  }
+};
+
+export const exportExcelByUser = async (req: Request, res: Response) => {
+  try {
+    const userID = req.query.assignedUserId as string | undefined;
+
+    if (!userID) {
+      return res.status(400).json({ message: "Không có dữ liệu người dùng" });
+    }
+
+    // ✅ Lấy dữ liệu hóa đơn theo người phụ trách
+    const invoices: IInvoice[] = await Invoice.find({ assignedTo: userID })
+      .populate("assignedTo", "fullName email phone")
+      .lean();
+
+    if (!invoices.length) {
+      return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
+    }
+
+    // ✅ Lấy tên người phụ trách
+    const userInfo: IUser | null = invoices[0].assignedTo as IUser;
+    const userName = userInfo?.fullName || "khong-ro";
+
+    // ✅ Chuẩn hoá tên để dùng trong tên file (bỏ dấu, cách -> -)
+    const normalizeFileName = (str: string) =>
+      str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // bỏ dấu tiếng Việt
+        .replace(/\s+/g, "-") // thay khoảng trắng bằng dấu -
+        .toLowerCase();
+
+    const safeUserName = normalizeFileName(userName);
+
+    // ✅ Chuẩn bị dữ liệu Excel
+    const dataForExcel = invoices.map((invoice, index) => ({
+      STT: index + 1,
+      "Mã Khách Hàng": invoice.invoiceNumber || "",
+      "Tên Khách Hàng": invoice.customerName || "",
+      "Địa Chỉ": invoice.customerAddress || "",
+      "Kỳ này": invoice.currentAmount ?? "",
+      "Kỳ trước": invoice.previousAmount ?? "",
+      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Số điện thoại": invoice.customerPhone || "",
+      "Ghi chú": invoice.note || "",
+      "Nhân viên phụ trách":
+        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
+          ? (invoice.assignedTo as IUser).fullName
+          : "",
+      "Trạng Thái In": invoice.printStatus || "",
+      "Trạng Thái Thu": invoice.collectionStatus || "",
+      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      "Tháng nợ": invoice.billing_period || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
+
+    worksheet["!cols"] = [
+      { wch: 5 },
+      { wch: 17 },
+      { wch: 35 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+    ];
+
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+    const fileName = `danh-sach-hoa-don-do-${safeUserName}-phu-trach.xlsx`;
+
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     res.send(buffer);
   } catch (error) {
