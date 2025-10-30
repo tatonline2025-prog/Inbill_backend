@@ -9,17 +9,6 @@ import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 
 export const previewExcel = async (req: Request, res: Response) => {
-  const now = new Date();
-  let month = now.getMonth() + 1;
-  let year = now.getFullYear();
-
-  if (month === 0) {
-    month = 12;
-    year -= 1;
-  }
-
-  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
-
   try {
     if (!req.file) {
       return res.status(400).json({ message: "Không tìm thấy file nào được tải lên." });
@@ -50,7 +39,7 @@ export const previewExcel = async (req: Request, res: Response) => {
     const documentsToCreate = jsonData
       .map((row) => {
         const newDoc: any = {
-          billing_period,
+          billing_period: req.body.billing_period,
           assignedTo: userId,
           province: user?.province,
           issueDate: new Date(),
@@ -100,17 +89,6 @@ export const previewExcel = async (req: Request, res: Response) => {
 };
 
 export const previewExcelProvince = async (req: Request, res: Response) => {
-  // const now = new Date();
-  // let month = now.getMonth();
-  // let year = now.getFullYear();
-
-  // if (month === 0) {
-  //   month = 12;
-  //   year -= 1;
-  // }
-
-  // const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
-
   try {
     if (!req.file) {
       return res.status(400).json({ message: "Không tìm thấy file nào được tải lên." });
