@@ -6,7 +6,7 @@ const invoiceSchema = new mongoose.Schema(
     invoiceNumber: { type: String, required: true },
     customerName: { type: String, required: true },
     customerPhone: { type: String },
-    billing_period: { type: String, required: true },
+    billing_period: { type: String },
     customerAddress: { type: String, default: "" },
 
     // 🏙️ Thêm tỉnh (province)
@@ -54,7 +54,7 @@ export interface IInvoice {
   invoiceNumber: string;
   customerName: string;
   customerPhone?: string | null;
-  billing_period: string;
+  billing_period?: string | null;
   customerAddress?: string | null;
 
   /** 🏙️ Tỉnh của khách hàng hoặc hóa đơn */
