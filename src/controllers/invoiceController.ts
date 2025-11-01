@@ -957,12 +957,12 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     // 2️⃣ Chuẩn bị dữ liệu xuất ra Excel — giống cấu trúc bên exportInvoicesToExcelPrinted
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Mã Khách Hàng": invoice.invoiceNumber || "",
-      "Tên Khách Hàng": invoice.customerName || "",
-      "Địa Chỉ": invoice.customerAddress || "",
+      "Mã khách hàng": invoice.invoiceNumber || "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
-      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Tổng tiền": invoice.totalAmount ?? "",
       "Số điện thoại": invoice.customerPhone || "",
       "Ghi chú": invoice.note || "",
       "Nhân viên phụ trách":
@@ -972,7 +972,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       "Trạng Thái In": invoice.printStatus || "",
       "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      "Tháng nợ": invoice.billing_period || "",
+      Kỳ: invoice.billing_period || "",
     }));
 
     // 3️⃣ Tạo workbook + worksheet
@@ -1042,12 +1042,12 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
     // ✅ Chuẩn bị dữ liệu xuất ra Excel
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Mã Khách Hàng": invoice.invoiceNumber || "",
-      "Tên Khách Hàng": invoice.customerName || "",
-      "Địa Chỉ": invoice.customerAddress || "",
+      "Mã khách hàng": invoice.invoiceNumber || "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
-      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Tổng tiền": invoice.totalAmount ?? "",
       "Số điện thoại": invoice.customerPhone || "",
       "Ghi chú": invoice.note || "",
       "Nhân viên phụ trách":
@@ -1057,7 +1057,7 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       "Trạng Thái In": invoice.printStatus || "",
       "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      "Tháng nợ": invoice.billing_period || "",
+      Kỳ: invoice.billing_period || "",
     }));
 
     // ✅ Tạo workbook + worksheet
@@ -1133,12 +1133,12 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
     // ✅ Chuẩn bị dữ liệu Excel
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
-      "Mã Khách Hàng": invoice.invoiceNumber || "",
-      "Tên Khách Hàng": invoice.customerName || "",
-      "Địa Chỉ": invoice.customerAddress || "",
+      "Mã khách hàng": invoice.invoiceNumber || "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
-      "Tổng Tiền nợ": invoice.totalAmount ?? "",
+      "Tổng tiền": invoice.totalAmount ?? "",
       "Số điện thoại": invoice.customerPhone || "",
       "Ghi chú": invoice.note || "",
       "Nhân viên phụ trách":
@@ -1148,7 +1148,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       "Trạng Thái In": invoice.printStatus || "",
       "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      "Tháng nợ": invoice.billing_period || "",
+      Kỳ: invoice.billing_period || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
