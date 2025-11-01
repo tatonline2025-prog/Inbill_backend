@@ -8,7 +8,7 @@ import userRoute from "./routes/userRoute";
 import authRoute from "./routes/authRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
-import { removeInvoice, resetInvoices } from "./controllers/invoiceController";
+import { findDuplicateInvoiceNumbers, removeInvoice, resetInvoices } from "./controllers/invoiceController";
 
 dotenv.config();
 connectDB();
@@ -50,3 +50,5 @@ app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 // removeInvoice();
 
 // resetInvoices();
+
+// findDuplicateInvoiceNumbers();

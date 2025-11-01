@@ -68,7 +68,6 @@ export const previewExcel = async (req: Request, res: Response) => {
       updateOne: {
         filter: {
           invoiceNumber: doc.invoiceNumber,
-          billing_period: doc.billing_period,
         },
         update: { $set: doc },
         upsert: true,
@@ -141,7 +140,6 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       updateOne: {
         filter: {
           invoiceNumber: doc.invoiceNumber,
-          billing_period: doc.billing_period,
         },
         update: { $set: doc },
         upsert: true,
@@ -1389,14 +1387,49 @@ export const deleteInvoice = async (req: Request, res: Response) => {
 
 export const removeInvoice = async () => {
   try {
-    const billing_period = `10/2025`;
+    // Xoá toàn bộ hoá đơn có billing_period rỗng, null hoặc không tồn tại
+    const result = await Invoice.deleteMany({
+      $or: [{ billing_period: { $exists: false } }, { billing_period: null }, { billing_period: "" }],
+    });
 
-    // Xoá toàn bộ hoá đơn theo kỳ thanh toán
-    const result = await Invoice.deleteMany({ billing_period });
-
-    console.log("Đã xoá thành công");
+    console.log(`✅ Đã xoá ${result.deletedCount} hoá đơn có billing_period rỗng.`);
   } catch (error) {
-    console.error("Lỗi khi xoá hoá đơn:", error);
+    console.error("❌ Lỗi khi xoá hoá đơn:", error);
+  }
+};
+
+export const findDuplicateInvoiceNumbers = async () => {
+  try {
+    // Gom nhóm theo invoiceNumber và đếm số lượng từng nhóm
+    const duplicates = await Invoice.aggregate([
+      {
+        $group: {
+          _id: "$invoiceNumber",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $match: {
+          count: { $gt: 1 }, // chỉ lấy những invoiceNumber xuất hiện > 1 lần
+        },
+      },
+      {
+        $sort: { count: -1 }, // sắp xếp theo số lượng giảm dần (nếu muốn)
+      },
+    ]);
+
+    if (duplicates.length === 0) {
+      console.log("✅ Không có invoiceNumber nào bị trùng.");
+    } else {
+      console.log(`⚠️ Có ${duplicates.length} invoiceNumber bị trùng:`);
+      duplicates.forEach((d) => {
+        console.log(`- ${d._id}: ${d.count} lần`);
+      });
+    }
+
+    return duplicates;
+  } catch (error) {
+    console.error("❌ Lỗi khi tìm invoiceNumber trùng:", error);
   }
 };
 
