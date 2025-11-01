@@ -26,6 +26,7 @@ export const previewExcel = async (req: Request, res: Response) => {
       "Tổng tiền": "totalAmount",
       "Kỳ này": "currentAmount",
       "Kỳ trước": "previousAmount",
+      Kỳ: "billing_period",
       // "Số ĐT KH": "customerPhone",
     };
 
@@ -39,17 +40,14 @@ export const previewExcel = async (req: Request, res: Response) => {
     const documentsToCreate = jsonData
       .map((row) => {
         const newDoc: any = {
-          billing_period: req.body.billing_period,
           assignedTo: userId,
           province: user?.province,
           issueDate: new Date(),
         };
 
         for (const excelHeader in columnMapping) {
-          if (row[excelHeader] !== undefined) {
-            const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
-            newDoc[dbField] = row[excelHeader];
-          }
+          const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
+          newDoc[dbField] = row[excelHeader] ?? "";
         }
 
         if (!newDoc.invoiceNumber) return null;
@@ -100,6 +98,7 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       "Tổng tiền": "totalAmount",
       "Kỳ này": "currentAmount",
       "Kỳ trước": "previousAmount",
+      Kỳ: "billing_period",
     };
 
     const fileBuffer = req.file.buffer;
@@ -113,16 +112,13 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     const documentsToCreate = jsonData
       .map((row) => {
         const newDoc: any = {
-          billing_period: req.body.billing_period,
           issueDate: new Date(),
           province: req.body.province, // 🔹 Gán province vào mỗi hóa đơn nếu cần
         };
 
         for (const excelHeader in columnMapping) {
-          if (row[excelHeader] !== undefined) {
-            const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
-            newDoc[dbField] = row[excelHeader];
-          }
+          const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
+          newDoc[dbField] = row[excelHeader] ?? "";
         }
 
         if (!newDoc.invoiceNumber) return null;
@@ -693,7 +689,6 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
       {
         $group: {
           _id: {
-            billing_period: "$billing_period",
             assignedTo: "$assignedTo._id",
           },
           billing_period: { $first: "$billing_period" },
@@ -1387,12 +1382,10 @@ export const deleteInvoice = async (req: Request, res: Response) => {
 
 export const removeInvoice = async () => {
   try {
-    // Xoá toàn bộ hoá đơn có billing_period rỗng, null hoặc không tồn tại
-    const result = await Invoice.deleteMany({
-      $or: [{ billing_period: { $exists: false } }, { billing_period: null }, { billing_period: "" }],
-    });
+    // Xoá toàn bộ hoá đơn có billing_period = "1"
+    const result = await Invoice.deleteMany({ billing_period: "1" });
 
-    console.log(`✅ Đã xoá ${result.deletedCount} hoá đơn có billing_period rỗng.`);
+    console.log(`✅ Đã xoá ${result.deletedCount} hoá đơn có billing_period = "1".`);
   } catch (error) {
     console.error("❌ Lỗi khi xoá hoá đơn:", error);
   }
