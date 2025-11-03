@@ -974,9 +974,16 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
 };
 
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
+  const { userId, userRole } = req.query;
+
   try {
     // 1️⃣ Lấy tất cả dữ liệu hóa đơn
-    const invoices: IInvoice[] = await Invoice.find({}).populate("assignedTo", "fullName email phone").lean();
+    let invoices: IInvoice[];
+    if (userRole === "user") {
+      invoices = await Invoice.find({ assignedTo: userId }).populate("assignedTo", "fullName email phone").lean();
+    } else {
+      invoices = await Invoice.find({}).populate("assignedTo", "fullName email phone").lean();
+    }
 
     if (!invoices.length) {
       return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
@@ -993,10 +1000,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       "Tổng tiền": invoice.totalAmount ?? "",
       "Số điện thoại": invoice.customerPhone || "",
       "Ghi chú": invoice.note || "",
-      "Nhân viên phụ trách":
-        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
-          ? (invoice.assignedTo as IUser).fullName
-          : "",
+      "Nhân viên phụ trách": (invoice.assignedTo as IUser)?.fullName || "",
       "Trạng Thái In": invoice.printStatus || "",
       "Trạng Thái Thu": invoice.collectionStatus || "",
       "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
