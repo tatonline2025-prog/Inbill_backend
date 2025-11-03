@@ -8,6 +8,9 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 export const previewExcel = async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -167,6 +170,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       searchInvoiceNumber,
       userprovince,
       collectionDate,
+      sortField,
+      sortDirection,
     } = req.query;
 
     // console.log(
@@ -246,6 +251,29 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.$and.push({ invoiceNumber: regex });
     }
 
+    const defaultSort: any = {
+      priority: -1,
+      totalAmountNum: -1,
+      issueDate: -1,
+      _id: 1,
+    };
+
+    let sortStage: any = {};
+
+    if (sortField && sortDirection && sortDirection !== "none") {
+      const direction = sortDirection === "asc" ? 1 : -1;
+
+      const dynamicSort: any = {};
+      dynamicSort[sortField as string] = direction;
+
+      sortStage = {
+        ...dynamicSort,
+        ...defaultSort,
+      };
+    } else {
+      sortStage = defaultSort;
+    }
+
     // Pipeline aggregate
     const pipeline: any[] = [
       { $match: match }, // dùng object match mới
@@ -287,7 +315,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
           },
         },
       },
-      { $sort: { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 } },
+      { $sort: sortStage },
       { $skip: skip },
       { $limit: limit },
     ];
@@ -1178,6 +1206,92 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
 
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    res.send(buffer);
+  } catch (error) {
+    console.error("Lỗi khi xuất file Excel:", error);
+    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+  }
+};
+
+export const exportExcelCollected = async (req: Request, res: Response) => {
+  try {
+    const { date, assignedUserId } = req.query;
+    const dateParam = date as string | undefined;
+
+    if (!dateParam || isNaN(new Date(dateParam).getTime())) {
+      return res.status(400).json({ message: "Tham số 'date' không hợp lệ." });
+    }
+
+    const startOfDay = dayjs.tz(dateParam, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+    const endOfDay = dayjs.tz(dateParam, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+
+    const match: any = {
+      collectionStatus: "collected",
+      collectionDate: { $gte: startOfDay, $lte: endOfDay },
+    };
+
+    // Thêm điều kiện lọc theo nhân viên nếu có
+    if (assignedUserId && assignedUserId !== "all") {
+      match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
+    }
+
+    const invoices: IInvoice[] = await Invoice.find(match).populate("assignedTo", "fullName email phone").lean();
+
+    if (!invoices.length) {
+      return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
+    }
+
+    const dataForExcel = invoices.map((invoice, index) => ({
+      STT: index + 1,
+      "Mã khách hàng": invoice.invoiceNumber || "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
+      "Kỳ này": invoice.currentAmount ?? "",
+      "Kỳ trước": invoice.previousAmount ?? "",
+      "Tổng tiền": invoice.totalAmount ?? "",
+      "Số điện thoại": invoice.customerPhone || "",
+      "Ghi chú": invoice.note || "",
+      "Nhân viên phụ trách":
+        // (Sử dụng cách kiểm tra an toàn hơn)
+        invoice.assignedTo && typeof invoice.assignedTo === "object" ? (invoice.assignedTo as IUser).fullName : "",
+      "Trạng Thái In": invoice.printStatus || "",
+      "Trạng Thái Thu": invoice.collectionStatus || "",
+      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      Kỳ: invoice.billing_period || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Hóa Đơn Đã Thu");
+
+    worksheet["!cols"] = [
+      { wch: 5 }, // STT
+      { wch: 17 }, // Mã KH
+      { wch: 35 }, // Tên KH
+      { wch: 35 }, // Địa chỉ
+      { wch: 15 }, // Kỳ này
+      { wch: 15 }, // Kỳ trước
+      { wch: 20 }, // Tổng tiền nợ
+      { wch: 20 }, // SĐT
+      { wch: 25 }, // Ghi chú
+      { wch: 25 }, // Nhân viên
+      { wch: 15 }, // Trạng thái in
+      { wch: 15 }, // Trạng thái thu
+      { wch: 15 }, // Ngày thu
+      { wch: 15 }, // Kỳ
+    ];
+
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+    // Đặt tên file động
+    const fileName = `hoa-don-da-thu-${dateParam}.xlsx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(fileName)}"` // Mã hóa tên file
+    );
 
     res.send(buffer);
   } catch (error) {

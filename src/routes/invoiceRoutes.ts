@@ -5,6 +5,7 @@ import {
   deleteByBillingPeriod,
   deleteInvoice,
   exportExcelByUser,
+  exportExcelCollected,
   exportInvoicesToExcel,
   exportInvoicesToExcelPrinted,
   fetchAllColInvoiceByUser,
@@ -68,6 +69,7 @@ router.post("/creatnew", authenticate, createInvoice);
 router.get("/exportExcel", exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
 router.get("/exportExcelByUser", exportExcelByUser);
+router.get("/exportExcelCollected", exportExcelCollected);
 
 router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 router.put("/update/:invoiceNumber", updateInvoice);
