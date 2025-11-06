@@ -998,13 +998,13 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
-      "Số điện thoại": invoice.customerPhone || "",
-      "Ghi chú": invoice.note || "",
-      "Nhân viên phụ trách": (invoice.assignedTo as IUser)?.fullName || "",
-      "Trạng Thái In": invoice.printStatus || "",
-      "Trạng Thái Thu": invoice.collectionStatus || "",
-      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      Kỳ: invoice.billing_period || "",
+      // "Số điện thoại": invoice.customerPhone || "",
+      // "Ghi chú": invoice.note || "",
+      // "Nhân viên phụ trách": (invoice.assignedTo as IUser)?.fullName || "",
+      // "Trạng Thái In": invoice.printStatus || "",
+      // "Trạng Thái Thu": invoice.collectionStatus || "",
+      // "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      // Kỳ: invoice.billing_period || "",
     }));
 
     // 3️⃣ Tạo workbook + worksheet
@@ -1016,18 +1016,20 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     worksheet["!cols"] = [
       { wch: 5 }, // STT
       { wch: 17 }, // Mã KH
+      { wch: 5 }, // STT
+      { wch: 17 }, // Mã KH
       { wch: 35 }, // Tên KH
       { wch: 35 }, // Địa chỉ
       { wch: 15 }, // Kỳ này
       { wch: 15 }, // Kỳ trước
       { wch: 20 }, // Tổng tiền nợ
-      { wch: 20 }, // SĐT
-      { wch: 25 }, // Ghi chú
-      { wch: 25 }, // Nhân viên
-      { wch: 15 }, // Trạng thái in
-      { wch: 15 }, // Trạng thái thu
-      { wch: 15 }, // Ngày thu
-      { wch: 15 }, // Tháng nợ
+      // { wch: 20 }, // SĐT
+      // { wch: 25 }, // Ghi chú
+      // { wch: 25 }, // Nhân viên
+      // { wch: 15 }, // Trạng thái in
+      // { wch: 15 }, // Trạng thái thu
+      // { wch: 15 }, // Ngày thu
+      // { wch: 15 }, // Tháng nợ
     ];
 
     // 5️⃣ Xuất ra buffer
@@ -1080,16 +1082,16 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
-      "Số điện thoại": invoice.customerPhone || "",
-      "Ghi chú": invoice.note || "",
-      "Nhân viên phụ trách":
-        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
-          ? (invoice.assignedTo as IUser).fullName
-          : "",
-      "Trạng Thái In": invoice.printStatus || "",
-      "Trạng Thái Thu": invoice.collectionStatus || "",
-      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      Kỳ: invoice.billing_period || "",
+      // "Số điện thoại": invoice.customerPhone || "",
+      // "Ghi chú": invoice.note || "",
+      // "Nhân viên phụ trách":
+      //   typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
+      //     ? (invoice.assignedTo as IUser).fullName
+      //     : "",
+      // "Trạng Thái In": invoice.printStatus || "",
+      // "Trạng Thái Thu": invoice.collectionStatus || "",
+      // "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      // Kỳ: invoice.billing_period || "",
     }));
 
     // ✅ Tạo workbook + worksheet
@@ -1106,13 +1108,13 @@ export const exportInvoicesToExcelPrinted = async (req: Request, res: Response) 
       { wch: 15 }, // Kỳ này
       { wch: 15 }, // Kỳ trước
       { wch: 20 }, // Tổng tiền nợ
-      { wch: 20 }, // SĐT
-      { wch: 25 }, // Ghi chú
-      { wch: 25 }, // Nhân viên
-      { wch: 15 }, // Trạng thái in
-      { wch: 15 }, // Trạng thái thu
-      { wch: 15 }, // Ngày thu
-      { wch: 15 }, // Tháng nợ
+      // { wch: 20 }, // SĐT
+      // { wch: 25 }, // Ghi chú
+      // { wch: 25 }, // Nhân viên
+      // { wch: 15 }, // Trạng thái in
+      // { wch: 15 }, // Trạng thái thu
+      // { wch: 15 }, // Ngày thu
+      // { wch: 15 }, // Tháng nợ
     ];
 
     // ✅ Xuất ra buffer và gửi về client
@@ -1171,16 +1173,16 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
-      "Số điện thoại": invoice.customerPhone || "",
-      "Ghi chú": invoice.note || "",
-      "Nhân viên phụ trách":
-        typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
-          ? (invoice.assignedTo as IUser).fullName
-          : "",
-      "Trạng Thái In": invoice.printStatus || "",
-      "Trạng Thái Thu": invoice.collectionStatus || "",
-      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      Kỳ: invoice.billing_period || "",
+      // "Số điện thoại": invoice.customerPhone || "",
+      // "Ghi chú": invoice.note || "",
+      // "Nhân viên phụ trách":
+      //   typeof invoice.assignedTo === "object" && "fullName" in invoice.assignedTo!
+      //     ? (invoice.assignedTo as IUser).fullName
+      //     : "",
+      // "Trạng Thái In": invoice.printStatus || "",
+      // "Trạng Thái Thu": invoice.collectionStatus || "",
+      // "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      // Kỳ: invoice.billing_period || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
@@ -1195,13 +1197,13 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       { wch: 15 },
       { wch: 15 },
       { wch: 20 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
+      // { wch: 20 },
+      // { wch: 25 },
+      // { wch: 25 },
+      // { wch: 15 },
+      // { wch: 15 },
+      // { wch: 15 },
+      // { wch: 15 },
     ];
 
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
@@ -1254,15 +1256,15 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
-      "Số điện thoại": invoice.customerPhone || "",
-      "Ghi chú": invoice.note || "",
-      "Nhân viên phụ trách":
-        // (Sử dụng cách kiểm tra an toàn hơn)
-        invoice.assignedTo && typeof invoice.assignedTo === "object" ? (invoice.assignedTo as IUser).fullName : "",
-      "Trạng Thái In": invoice.printStatus || "",
-      "Trạng Thái Thu": invoice.collectionStatus || "",
-      "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
-      Kỳ: invoice.billing_period || "",
+      // "Số điện thoại": invoice.customerPhone || "",
+      // "Ghi chú": invoice.note || "",
+      // "Nhân viên phụ trách":
+      //   // (Sử dụng cách kiểm tra an toàn hơn)
+      //   invoice.assignedTo && typeof invoice.assignedTo === "object" ? (invoice.assignedTo as IUser).fullName : "",
+      // "Trạng Thái In": invoice.printStatus || "",
+      // "Trạng Thái Thu": invoice.collectionStatus || "",
+      // "Ngày Thu": invoice.collectionDate ? new Date(invoice.collectionDate).toLocaleDateString("vi-VN") : "",
+      // Kỳ: invoice.billing_period || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
@@ -1277,13 +1279,13 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       { wch: 15 }, // Kỳ này
       { wch: 15 }, // Kỳ trước
       { wch: 20 }, // Tổng tiền nợ
-      { wch: 20 }, // SĐT
-      { wch: 25 }, // Ghi chú
-      { wch: 25 }, // Nhân viên
-      { wch: 15 }, // Trạng thái in
-      { wch: 15 }, // Trạng thái thu
-      { wch: 15 }, // Ngày thu
-      { wch: 15 }, // Kỳ
+      // { wch: 20 }, // SĐT
+      // { wch: 25 }, // Ghi chú
+      // { wch: 25 }, // Nhân viên
+      // { wch: 15 }, // Trạng thái in
+      // { wch: 15 }, // Trạng thái thu
+      // { wch: 15 }, // Ngày thu
+      // { wch: 15 }, // Kỳ
     ];
 
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
