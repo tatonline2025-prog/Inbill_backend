@@ -1562,28 +1562,45 @@ export const resetInvoices = async () => {
 export const searchInvoicesByDate = async (req: Request, res: Response) => {
   try {
     const { assignedUserId, userprovince, selectedDate } = req.query;
+    const user = req.user; // user đã được middleware auth gắn vào
 
-    // console.log(assignedUserId, userprovince, selectedDate);
-    // Ép kiểu về string
-    const dateStr = String(selectedDate);
+    if (!user) {
+      return res.status(400).json({ message: "Không xác định được người dùng." });
+    }
 
-    if (!assignedUserId || !userprovince || !selectedDate) {
+    // Kiểm tra tham số bắt buộc
+    if (!assignedUserId || !selectedDate) {
       return res.status(400).json({ message: "Thiếu tham số bắt buộc." });
     }
 
-    // Tạo khoảng thời gian đầu & cuối ngày
+    // Thiếu province chỉ hợp lệ nếu user là admin
+    if (!userprovince && user?.role !== "admin") {
+      return res.status(400).json({ message: "Thiếu thông tin tỉnh thành." });
+    }
+
+    // Cấu hình timezone
     dayjs.extend(utc);
     dayjs.extend(timezone);
 
+    const dateStr = String(selectedDate);
     const startOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").startOf("day").toDate();
     const endOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").endOf("day").toDate();
 
-    const invoices = await Invoice.find({
-      assignedTo: assignedUserId,
-      province: userprovince,
+    // console.log("Ngày truy vấn:", { startOfDay, endOfDay });
+
+    // Xây dựng điều kiện tìm kiếm động
+    const query: any = {
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
-    })
+    };
+
+    // Nếu KHÔNG phải admin thì thêm điều kiện theo tỉnh
+    if (user?.role !== "admin") {
+      query.province = userprovince;
+      query.assignedTo = assignedUserId;
+    }
+
+    const invoices = await Invoice.find(query)
       .populate("assignedTo", "fullName email phone")
       .sort({ collectionDate: -1 });
 
