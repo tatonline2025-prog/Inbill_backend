@@ -16,6 +16,7 @@ import {
   fetchInvoiceByUserMonth,
   fetchUncollectedInvoicesByUser,
   getInvoiceSummary,
+  getLatestBillingPeriod,
   previewExcel,
   previewExcelProvince,
   searchInvoice,
@@ -58,6 +59,7 @@ router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
+router.get("/latest-period", getLatestBillingPeriod);
 router.delete("/deleteByBillingPeriod", authenticate, deleteByBillingPeriod);
 
 router.post("/creatnew", authenticate, createInvoice);

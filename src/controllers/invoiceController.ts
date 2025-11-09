@@ -1630,3 +1630,23 @@ export const deleteByBillingPeriod = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Lỗi server khi xoá hoá đơn!" });
   }
 };
+
+export const getLatestBillingPeriod = async (req: Request, res: Response) => {
+  try {
+    const latestInvoice = await Invoice.findOne({
+      billing_period: { $exists: true, $ne: "" },
+    }).sort({ createdAt: -1 });
+
+    if (!latestInvoice) {
+      // Nếu chưa có dữ liệu nào hợp lệ thì mặc định là tháng hiện tại
+      const now = new Date();
+      const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      return res.json({ billing_period: defaultPeriod });
+    }
+
+    res.json({ billing_period: latestInvoice.billing_period });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
