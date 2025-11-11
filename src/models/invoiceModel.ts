@@ -12,6 +12,8 @@ const invoiceSchema = new mongoose.Schema(
     // 🏙️ Thêm tỉnh (province)
     province: { type: String, default: "" },
 
+    recordBookCode: { type: String }, // MA_SOGCS
+
     // 💰 Tiền kỳ này và kỳ trước
     currentAmount: { type: String, required: true }, // Tiền kỳ này
     previousAmount: { type: String, required: false }, // Tiền kỳ trước

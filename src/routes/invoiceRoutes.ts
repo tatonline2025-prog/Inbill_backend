@@ -4,27 +4,29 @@ import {
   createInvoice,
   deleteByBillingPeriod,
   deleteInvoice,
-  exportExcelByUser,
-  exportExcelCollected,
-  exportInvoicesToExcel,
-  exportInvoicesToExcelPrinted,
-  fetchAllColInvoiceByUser,
-  fetchallInvoice,
-  fetchAllUnColInvoiceByUser,
-  fetchCollectedInvoicesByUser,
-  fetchInvoiceByUser,
-  fetchInvoiceByUserMonth,
-  fetchUncollectedInvoicesByUser,
-  getInvoiceSummary,
-  getLatestBillingPeriod,
-  previewExcel,
-  previewExcelProvince,
-  searchInvoice,
-  searchInvoicesByDate,
   toggleInvoiceStatus,
   updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
+import {
+  exportCollectedInvoicesByDate,
+  exportExcelByUser,
+  exportExcelCollected,
+  exportInvoicesToExcel,
+  previewExcel,
+  previewExcelProvince,
+} from "../controllers/invoice.excel.controller";
+import {
+  fetchAllColInvoiceByUser,
+  fetchallInvoice,
+  fetchAllUnColInvoiceByUser,
+  fetchInvoiceByUser,
+  fetchInvoiceByUserMonth,
+  getInvoiceSummary,
+  getLatestBillingPeriod,
+  searchInvoice,
+  searchInvoicesByDate,
+} from "../controllers/invoice.query.controller";
 
 const router = Router();
 
@@ -69,7 +71,7 @@ router.post("/creatnew", authenticate, createInvoice);
 // router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
 
 router.get("/exportExcel", exportInvoicesToExcel);
-router.get("/exportExcelPrinted", exportInvoicesToExcelPrinted);
+router.get("/exportExcelPrinted", exportCollectedInvoicesByDate);
 router.get("/exportExcelByUser", exportExcelByUser);
 router.get("/exportExcelCollected", exportExcelCollected);
 
