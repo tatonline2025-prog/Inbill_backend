@@ -541,9 +541,10 @@ export const searchInvoice = async (req: Request, res: Response) => {
       assignedUserId, // id của người thu
       userprovince, // tỉnh của người dùng
       searchInvoiceNumber, // mã hóa đơn
+      searchType,
     } = req.query;
 
-    // console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber);
+    console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber, searchType);
 
     // ⚙️ Tạo object điều kiện tìm kiếm cơ bản
     const match: any = {};
@@ -564,7 +565,9 @@ export const searchInvoice = async (req: Request, res: Response) => {
     }
 
     // ✅ 4. Lọc theo mã hóa đơn
-    if (searchInvoiceNumber && searchInvoiceNumber !== "") {
+    if (searchType && searchType === "station") {
+      match.recordBookCode = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
+    } else if (searchType && searchType === "customer") {
       match.invoiceNumber = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     }
 

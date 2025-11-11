@@ -67,6 +67,7 @@ export const createInvoice = async (req: Request, res: Response) => {
       billing_period,
       currentAmount,
       previousAmount,
+      recordBookCode,
       assignedTo,
     } = req.body.newInvoice;
 
@@ -96,6 +97,7 @@ export const createInvoice = async (req: Request, res: Response) => {
       currentAmount,
       previousAmount,
       totalAmount: Number(currentAmount) + Number(previousAmount), // ✅ tính tổng
+      recordBookCode: recordBookCode,
       assignedTo: finalAssignedTo,
       createdAt: new Date(),
     });
@@ -124,6 +126,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
       totalAmount,
       note,
       assignedTo,
+      recordBookCode,
       billing_period,
     } = req.body.formData;
     const { invoiceNumber } = req.params;
@@ -151,6 +154,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     invoice.assignedTo = finalAssignedTo;
     invoice.billing_period = billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
+    invoice.recordBookCode = recordBookCode;
 
     // console.log(invoice);
 

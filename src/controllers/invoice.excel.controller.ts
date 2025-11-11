@@ -17,7 +17,7 @@ const columnMapping = {
   "Kỳ này": "currentAmount",
   "Kỳ trước": "previousAmount",
   Kỳ: "billing_period",
-  MA_SOGCS: "recordBookCode",
+  Trạm: "recordBookCode",
   // Thêm các mapping khác nếu cần
 };
 
