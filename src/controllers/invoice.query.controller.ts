@@ -544,7 +544,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
       searchType,
     } = req.query;
 
-    console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber, searchType);
+    // console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber, searchType);
 
     // ⚙️ Tạo object điều kiện tìm kiếm cơ bản
     const match: any = {};

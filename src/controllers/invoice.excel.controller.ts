@@ -16,7 +16,7 @@ const columnMapping = {
   "Tổng tiền": "totalAmount",
   "Kỳ này": "currentAmount",
   "Kỳ trước": "previousAmount",
-  Kỳ: "billing_period",
+  // Kỳ: "billing_period",
   Trạm: "recordBookCode",
   // Thêm các mapping khác nếu cần
 };
@@ -48,6 +48,7 @@ export const previewExcel = async (req: Request, res: Response) => {
         const newDoc: any = {
           assignedTo: userId,
           province: user?.province,
+          billing_period: req.body.billing_period,
           issueDate: new Date(),
         };
 
@@ -113,7 +114,8 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       .map((row) => {
         const newDoc: any = {
           issueDate: new Date(),
-          province: req.body.province, // 🔹 Gán province vào mỗi hóa đơn nếu cần
+          province: req.body.province,
+          billing_period: req.body.billing_period,
         };
 
         for (const excelHeader in columnMapping) {
