@@ -569,6 +569,8 @@ export const searchInvoice = async (req: Request, res: Response) => {
       match.recordBookCode = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     } else if (searchType && searchType === "customer") {
       match.invoiceNumber = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
+    } else if (searchType && searchType === "customerName") {
+      match.customerName = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     }
 
     // ✅ Thực thi truy vấn
