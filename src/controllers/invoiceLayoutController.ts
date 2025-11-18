@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 // Lưu hoặc cập nhật layout
 export const saveInvoiceLayout = async (req: Request, res: Response) => {
   try {
-    const { layout } = req.body;
+    const { layoutID, layout } = req.body;
     const user = req.user; // middleware auth đã gắn req.user (VD: { _id, username })
 
     if (!layout) {
@@ -16,28 +16,13 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Không xác thực được người dùng" });
     }
 
-    // 🔧 Ghi đè label nếu có textOverride
-    const processedLayout = layout.map((item: any) => {
-      let updatedLabel = item.label;
-
-      if (
-        typeof item.textOverride === "string" &&
-        item.textOverride.trim() !== "" &&
-        item.textOverride.trim() !== item.label
-      ) {
-        updatedLabel = item.textOverride.trim();
-      }
-
-      // Trả về object mới, đã xóa textOverride
-      const { textOverride, ...rest } = item;
-      return { ...rest, label: updatedLabel };
-    });
+    console.log(layoutID, layout);
 
     // Tìm layout hiện có
-    const existingLayout = await invoiceLayoutModel.findOne();
+    const existingLayout = await invoiceLayoutModel.findById({ _id: layoutID });
 
     if (existingLayout) {
-      existingLayout.layout = processedLayout;
+      existingLayout.layout = layout;
       existingLayout.lastEditedBy = {
         userId: new mongoose.Types.ObjectId(user._id),
         username: user.username,
@@ -49,17 +34,6 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
         message: "Cập nhật layout thành công",
         data: existingLayout,
       });
-    } else {
-      const newLayout = new invoiceLayoutModel({
-        layout: processedLayout,
-        lastEditedBy: { userId: user._id, username: user.username },
-      });
-      await newLayout.save();
-
-      return res.json({
-        message: "Tạo layout chung mới thành công",
-        data: newLayout,
-      });
     }
   } catch (error) {
     console.error("❌ Lỗi khi lưu layout:", error);
@@ -69,7 +43,10 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
 
 export const getInvoiceLayout = async (req: Request, res: Response) => {
   try {
-    const layout = await invoiceLayoutModel.findOne();
+    const layout = await invoiceLayoutModel.find();
+
+    // console.log(layout);
+
     if (!layout) {
       return res.status(404).json({ message: "Chưa có layout nào được lưu" });
     }
