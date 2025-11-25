@@ -277,6 +277,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     // ✅ Pipeline aggregate
     const match: any = {};
 
+    if (req.user?.role === "admin") {
+    } else {
+      match.isPaid = { $ne: true };
+    }
+
     if (printStatus && printStatus !== "all") {
       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
     }

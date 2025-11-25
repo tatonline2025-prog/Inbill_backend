@@ -4,6 +4,7 @@ import {
   createInvoice,
   deleteByBillingPeriod,
   deleteInvoice,
+  markListInvoicesAsPaid,
   toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
   updateInvoice,
@@ -56,7 +57,7 @@ router.post(
 router.get("/summary", getInvoiceSummary);
 router.get("/search", authenticate, searchInvoice);
 
-router.get("/fetchall", fetchallInvoice);
+router.get("/fetchall", authenticate, fetchallInvoice);
 router.get("/searchByDate", authenticate, searchInvoicesByDate);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
@@ -66,6 +67,7 @@ router.get("/latest-period", getLatestBillingPeriod);
 router.delete("/deleteByBillingPeriod", authenticate, deleteByBillingPeriod);
 
 router.post("/creatnew", authenticate, createInvoice);
+router.post("/mark-paid-list", authenticate, authorize(["admin"]), markListInvoicesAsPaid);
 
 // Tìm 1 hoá đơn theo người đảm nhận
 // router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
