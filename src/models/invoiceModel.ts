@@ -19,6 +19,12 @@ const invoiceSchema = new mongoose.Schema(
     previousAmount: { type: String, required: false }, // Tiền kỳ trước
     totalAmount: { type: String, required: true },
 
+    isPaid: {
+      type: Boolean,
+      default: false,
+      index: true, // Đánh index để lọc cho nhanh
+    },
+
     collectionStatus: {
       type: String,
       enum: ["collected", "not_collected"],
@@ -65,6 +71,8 @@ export interface IInvoice {
   currentAmount: string; // 💰 Tiền kỳ này
   previousAmount?: string | null; // 💰 Tiền kỳ trước
   totalAmount: string;
+
+  isPaid: boolean;
 
   collectionStatus: "collected" | "not_collected";
   printStatus: "printed" | "not_printed";

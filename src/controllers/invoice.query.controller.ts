@@ -549,12 +549,12 @@ export const searchInvoice = async (req: Request, res: Response) => {
     // ⚙️ Tạo object điều kiện tìm kiếm cơ bản
     const match: any = {};
 
-    // ✅ 1. Lọc theo trạng thái thu tiền
+    // Lọc theo trạng thái thu tiền
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
     }
 
-    // ✅ 2. Lọc theo người phụ trách hoặc hoá đơn chưa có người phụ trách cùng tỉnh
+    // Lọc theo người phụ trách hoặc hoá đơn chưa có người phụ trách cùng tỉnh
     if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
       match.$or = [
         { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
@@ -564,7 +564,16 @@ export const searchInvoice = async (req: Request, res: Response) => {
       ];
     }
 
-    // ✅ 4. Lọc theo mã hóa đơn
+    // Nếu user KHÔNG phải là admin -> Bắt buộc chỉ tìm thấy hoá đơn isPaid false
+    if (req.user?.role !== "admin") {
+      // $ne: true nghĩa là lấy tất cả các trường hợp:
+      // 1. isPaid = false
+      // 2. isPaid = null
+      // 3. Không có trường isPaid
+      match.isPaid = { $ne: true };
+    }
+
+    // Lọc theo mã hóa đơn
     if (searchType && searchType === "station") {
       match.recordBookCode = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     } else if (searchType && searchType === "customer") {
@@ -576,7 +585,8 @@ export const searchInvoice = async (req: Request, res: Response) => {
     // ✅ Thực thi truy vấn
     const invoices = await Invoice.find(match)
       .populate("assignedTo", "fullName email phone")
-      .sort({ issueDate: -1 })
+      .collation({ locale: "en_US", numericOrdering: true })
+      .sort({ totalAmount: -1 })
       .limit(20); // giới hạn kết quả trả về để tránh quá tải
 
     res.status(200).json({

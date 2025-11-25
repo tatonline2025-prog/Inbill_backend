@@ -56,6 +56,32 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => {
+  try {
+    const invoiceId = req.params.invoiceId;
+
+    const invoice = await Invoice.findById(invoiceId);
+    if (!invoice) return res.status(404).json({ message: "Hóa đơn không tồn tại" });
+
+    if (!invoice.currentAmount || invoice.currentAmount.trim() === "") {
+      invoice.currentAmount = "0";
+    }
+
+    if (invoice.isPaid) {
+      invoice.isPaid = false;
+    } else {
+      invoice.isPaid = true;
+    }
+
+    await invoice.save();
+
+    res.status(200).json(invoice);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
 export const createInvoice = async (req: Request, res: Response) => {
   try {
     // ✅ Lấy dữ liệu từ body

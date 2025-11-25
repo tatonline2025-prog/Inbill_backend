@@ -4,6 +4,7 @@ import {
   createInvoice,
   deleteByBillingPeriod,
   deleteInvoice,
+  toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
   updateInvoice,
 } from "../controllers/invoiceController";
@@ -78,5 +79,6 @@ router.get("/exportExcelCollected", exportExcelCollected);
 router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
 router.put("/update/:invoiceNumber", updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
+router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);
 
 export default router;
