@@ -268,16 +268,24 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       collectionDate,
       sortField,
       sortDirection,
+      isPaid,
     } = req.query;
 
     const page = parseInt(currentPage as string, 10);
     const limit = parseInt(invoicesPerPage as string, 10);
     const skip = (page - 1) * limit;
 
+    const isPaidBool = isPaid === "true";
+
     // ✅ Pipeline aggregate
     const match: any = {};
 
     if (req.user?.role === "admin") {
+      if (isPaidBool) {
+        match.isPaid = true;
+      } else {
+        match.isPaid = { $ne: true };
+      }
     } else {
       match.isPaid = { $ne: true };
     }
