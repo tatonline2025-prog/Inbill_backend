@@ -277,10 +277,13 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
 
     const isPaidBool = isPaid === "true";
 
+    let assignedUser = assignedUserId;
+
     // ✅ Pipeline aggregate
     const match: any = {};
 
     if (req.user?.role === "admin") {
+      assignedUser = "all";
       if (isPaidBool) {
         match.isPaid = true;
       } else {
@@ -298,11 +301,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionStatus = collectionStatus;
     }
 
-    if (assignedUserId && assignedUserId !== "all" && assignedUserId !== "no_one") {
+    if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one") {
       // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
       match.$or = [
         // 1️⃣ Hóa đơn đã được giao cho chính người đó
-        { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
+        { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
 
         // 2️⃣ Hóa đơn chưa giao + cùng tỉnh
         {
@@ -314,7 +317,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
           ],
         },
       ];
-    } else if (assignedUserId === "no_one") {
+    } else if (assignedUser === "no_one") {
       // ✅ Nếu chọn "no_one" → chỉ lấy hóa đơn chưa giao (bỏ điều kiện tỉnh nếu bạn không muốn lọc theo tỉnh)
       match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
     } else {
