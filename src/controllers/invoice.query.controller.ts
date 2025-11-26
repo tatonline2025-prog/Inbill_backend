@@ -283,7 +283,12 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const match: any = {};
 
     if (req.user?.role === "admin") {
-      assignedUser = "all";
+      // Kiểm tra: Nếu KHÔNG phải string HOẶC là string nhưng rỗng thì gán = "all"
+      if (typeof assignedUser !== "string" || !assignedUser.trim()) {
+        assignedUser = "all";
+      }
+
+      // Xử lý isPaid
       if (isPaidBool) {
         match.isPaid = true;
       } else {
@@ -292,7 +297,6 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     } else {
       match.isPaid = { $ne: true };
     }
-
     if (printStatus && printStatus !== "all") {
       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
     }
@@ -543,6 +547,72 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("fetchallInvoice error:", error);
     res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+const addTotalAmountNumField = {
+  $addFields: {
+    totalAmountNum: {
+      $cond: [
+        {
+          $or: [
+            { $eq: ["$totalAmount", "Không nợ cước"] },
+            { $eq: ["$totalAmount", null] },
+            { $eq: ["$totalAmount", ""] },
+          ],
+        },
+        0,
+        {
+          $toDouble: {
+            $replaceAll: {
+              input: "$totalAmount",
+              find: ",",
+              replacement: "",
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+export const fetchTop20HighestInvoices = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    const userRole = req.user?.role;
+    const { collectionStatus } = req.query;
+    const limit = 20; // Luôn lấy 20 hóa đơn
+
+    const match: any = {};
+
+    if (userRole !== "admin" && userId) {
+      match.assignedTo = new mongoose.Types.ObjectId(userId as string);
+    }
+
+    if (collectionStatus) {
+      match.collectionStatus = collectionStatus;
+    }
+
+    const pipeline: any[] = [
+      { $match: match },
+      addTotalAmountNumField,
+      { $sort: { totalAmountNum: -1 } },
+      { $limit: limit },
+    ];
+
+    const result = await Invoice.aggregate(pipeline);
+
+    // ✅ Populate thủ công (Giữ lại logic populate)
+    await Invoice.populate(result, { path: "assignedTo", select: "fullName email" });
+
+    // ✅ Trả kết quả
+    res.status(200).json({
+      success: true,
+      message: `Đã lấy thành công ${result.length} hóa đơn nợ cước cao nhất.`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("fetchTop20HighestInvoices error:", error);
+    res.status(500).json({ message: "Lỗi server khi lấy top hóa đơn" });
   }
 };
 

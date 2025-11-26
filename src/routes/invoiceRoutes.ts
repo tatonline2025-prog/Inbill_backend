@@ -24,6 +24,7 @@ import {
   fetchAllUnColInvoiceByUser,
   fetchInvoiceByUser,
   fetchInvoiceByUserMonth,
+  fetchTop20HighestInvoices,
   getInvoiceSummary,
   getLatestBillingPeriod,
   searchInvoice,
@@ -58,6 +59,7 @@ router.get("/summary", getInvoiceSummary);
 router.get("/search", authenticate, searchInvoice);
 
 router.get("/fetchall", authenticate, fetchallInvoice);
+router.get("/largest", authenticate, fetchTop20HighestInvoices);
 router.get("/searchByDate", authenticate, searchInvoicesByDate);
 router.get("/fetchallbyuser", authenticate, fetchInvoiceByUser);
 router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
