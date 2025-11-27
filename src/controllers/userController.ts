@@ -99,3 +99,36 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const updateAllCollectionFee = async () => {
+  try {
+    // updateMany với filter {} nghĩa là chọn tất cả document trong collection
+    const result = await User.updateMany({}, { $set: { collectionFee: 3000 } });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật collectionFee:", error);
+  }
+};
+
+// Backend: controllers/userController.ts
+export const updateFee = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params; // Lấy ID user từ URL
+    const { collectionFee } = req.body; // Lấy phí mới từ body
+
+    // Validate
+    if (collectionFee === undefined || isNaN(collectionFee)) {
+      return res.status(400).json({ message: "Phí dịch vụ không hợp lệ." });
+    }
+
+    // Cập nhật Database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { collectionFee: collectionFee },
+      { new: true } // Trả về data mới sau khi update
+    ).select("-password"); // Không trả về password
+
+    res.status(200).json({ message: "Cập nhật thành công", user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};

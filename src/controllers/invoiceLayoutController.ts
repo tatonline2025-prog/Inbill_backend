@@ -16,7 +16,7 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Không xác thực được người dùng" });
     }
 
-    console.log(layoutID, layout);
+    // console.log(layoutID, layout);
 
     // Tìm layout hiện có
     const existingLayout = await invoiceLayoutModel.findById({ _id: layoutID });

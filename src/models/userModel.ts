@@ -22,6 +22,9 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
+    collectionFee: { type: String },
+    usertype: { type: String },
+
     // Dùng để phân quyền hệ thống
     role: {
       type: String,

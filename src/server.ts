@@ -8,7 +8,9 @@ import userRoute from "./routes/userRoute";
 import authRoute from "./routes/authRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
+import sumRoute from "./routes/sumRoute";
 import { findDuplicateInvoiceNumbers, removeInvoice, resetInvoices } from "./controllers/invoiceController";
+import { updateAllCollectionFee } from "./controllers/userController";
 
 dotenv.config();
 connectDB();
@@ -44,6 +46,8 @@ app.use("/api/user", userRoute);
 app.use("/api/invoices", invoiceRoute);
 app.use("/api/invoiceslayout", invoiceRouteLayout);
 
+app.use("/api/v1/finance", sumRoute);
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
@@ -52,3 +56,5 @@ app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 // resetInvoices();
 
 // findDuplicateInvoiceNumbers();
+
+// updateAllCollectionFee();

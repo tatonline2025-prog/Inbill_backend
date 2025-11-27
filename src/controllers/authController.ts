@@ -36,6 +36,8 @@ export const login = async (req: Request, res: Response) => {
         username: user.username,
         fullName: user.fullName,
         province: user.province,
+        usertype: user.usertype,
+        collectionFee: user.collectionFee,
       },
       process.env.JWT_SECRET!,
       { expiresIn: "24h" } // Token sẽ hết hạn sau 8 tiếng
@@ -46,11 +48,13 @@ export const login = async (req: Request, res: Response) => {
       message: "Đăng nhập thành công!",
       token,
       user: {
-        _id: user._id,
+        // _id: user._id,
         username: user.username,
         fullName: user.fullName,
         province: user.province,
         role: user.role,
+        usertype: user.usertype,
+        collectionFee: user.collectionFee,
       },
     });
   } catch (error) {
@@ -61,17 +65,22 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { userName, email, password, fullName, province } = req.body;
+    const { userName, email, password, fullName, province, usertype } = req.body;
 
     // --- VALIDATION ---
-    if (!userName || !password || !email || !fullName || !province) {
+    if (!userName || !password || !email || !fullName || !province || !usertype) {
       return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin: username, password, fullName." });
     }
 
     const normalizedUsername = userName.trim().toLowerCase();
-    const existingUser = await User.findOne({ username: normalizedUsername });
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ $or: [{ username: normalizedUsername }, { email: normalizedEmail }] });
 
     if (existingUser) {
+      if (email === existingUser.email) {
+        return res.status(400).json({ message: "Email này đã được sử dụng." });
+      }
+
       return res.status(400).json({ message: "Username này đã được sử dụng." });
     }
 
@@ -95,7 +104,9 @@ export const register = async (req: Request, res: Response) => {
       fullName,
       email,
       province,
+      usertype,
       role,
+      collectionFee: 0,
       createdBy,
     });
 
@@ -105,8 +116,10 @@ export const register = async (req: Request, res: Response) => {
       username: newUser.username,
       fullName: newUser.fullName,
       province: newUser.province,
+      usertype: newUser.usertype,
       role: newUser.role,
       createdAt: newUser.createdAt,
+      collectionFee: newUser.collectionFee,
     };
 
     res.status(201).json({ message: "Tạo tài khoản thành công!", user: userResponse });
@@ -118,13 +131,23 @@ export const register = async (req: Request, res: Response) => {
 
 export const me = async (req: Request, res: Response) => {
   try {
-    // req.user đã được middleware authenticate gắn vào
-    // console.log(req.user);
+    // 1. Lấy ID từ req.user (đã được middleware giải mã từ token)
+    // Lưu ý: tùy middleware mà nó là req.user._id hoặc req.user.id
+    const userId = req.user?._id;
 
+    // 2. Truy vấn trực tiếp vào Database để lấy dữ liệu TƯƠI MỚI nhất
+    const user = await User.findById(userId).select("-password"); // Loại bỏ pass cho an toàn
+
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    // 3. Trả về user mới (Lúc này collectionFee chắc chắn là số mới update)
     res.json({
-      user: req.user,
+      user: user,
     });
   } catch (error) {
+    console.error("Lỗi lấy thông tin cá nhân:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
