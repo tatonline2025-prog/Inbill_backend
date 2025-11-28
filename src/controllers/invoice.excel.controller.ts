@@ -166,11 +166,12 @@ const configureColumnWidths = (worksheet: XLSX.WorkSheet) => {
   worksheet["!cols"] = [
     { wch: 5 }, // STT
     { wch: 17 }, // Mã KH
-    { wch: 35 }, // Tên KH
-    { wch: 35 }, // Địa chỉ
     { wch: 15 }, // Kỳ này
-    { wch: 15 }, // Kỳ trước
-    { wch: 20 }, // Tổng tiền nợ
+    { wch: 10 }, // Kỳ trước
+    { wch: 15 }, // Tổng tiền
+    { wch: 35 }, // Tên KH
+    { wch: 65 }, // Địa chỉ
+    { wch: 10 }, // Trạm
   ];
 };
 
@@ -179,13 +180,15 @@ const configureColumnWidths = (worksheet: XLSX.WorkSheet) => {
  * GET /api/invoices/export-all?userId=...&userRole=...
  */
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
-  const { userId, userRole } = req.query;
+  // console.log(req.user?._id, req.user?.role);
 
   try {
     // 1️⃣ Lấy tất cả dữ liệu hóa đơn
     let invoices: IInvoice[];
-    if (userRole === "user") {
-      invoices = await Invoice.find({ assignedTo: userId }).populate("assignedTo", "fullName email phone").lean();
+    if (req.user?.role === "user") {
+      invoices = await Invoice.find({ assignedTo: req.user?._id })
+        .populate("assignedTo", "fullName email phone")
+        .lean();
     } else {
       invoices = await Invoice.find({}).populate("assignedTo", "fullName email phone").lean();
     }
@@ -198,11 +201,12 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
       "Mã khách hàng": invoice.invoiceNumber || "",
-      Tên: invoice.customerName || "",
-      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
+      Trạm: invoice.recordBookCode,
     }));
 
     // 3️⃣ Tạo workbook + worksheet
@@ -263,11 +267,12 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
       "Mã khách hàng": invoice.invoiceNumber || "",
-      Tên: invoice.customerName || "",
-      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
+      Trạm: invoice.recordBookCode,
     }));
 
     // ✅ Tạo workbook + worksheet
@@ -333,11 +338,12 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
       "Mã khách hàng": invoice.invoiceNumber || "",
-      Tên: invoice.customerName || "",
-      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
+      Trạm: invoice.recordBookCode,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
@@ -395,11 +401,12 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
       "Mã khách hàng": invoice.invoiceNumber || "",
-      Tên: invoice.customerName || "",
-      "Địa chỉ": invoice.customerAddress || "",
       "Kỳ này": invoice.currentAmount ?? "",
       "Kỳ trước": invoice.previousAmount ?? "",
       "Tổng tiền": invoice.totalAmount ?? "",
+      Tên: invoice.customerName || "",
+      "Địa chỉ": invoice.customerAddress || "",
+      Trạm: invoice.recordBookCode,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);

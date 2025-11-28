@@ -68,6 +68,8 @@ export interface IInvoice {
   /** 🏙️ Tỉnh của khách hàng hoặc hóa đơn */
   province?: string | null;
 
+  recordBookCode?: string | null;
+
   currentAmount: string; // 💰 Tiền kỳ này
   previousAmount?: string | null; // 💰 Tiền kỳ trước
   totalAmount: string;

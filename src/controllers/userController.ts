@@ -25,7 +25,7 @@ export const changeInfo = async (req: Request, res: Response) => {
 
   try {
     const { editinguserId } = req.body;
-    const { fullName, email, province, username, pass, phone } = req.body.formData;
+    const { fullName, email, province, username, pass, phone, usertype } = req.body.formData;
 
     const user = await User.findById(editinguserId);
 
@@ -35,7 +35,7 @@ export const changeInfo = async (req: Request, res: Response) => {
     user.email = email;
     user.province = province;
     user.phone = phone;
-
+    user.usertype = usertype;
     user.username = username;
 
     // Mã hóa mật khẩu mới

@@ -4,17 +4,25 @@ import jwt from "jsonwebtoken";
 import { JwtPayload } from "../types/jwtPayload";
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization; // Bearer <token>
+  const authHeader = req.headers.authorization || (req.query.token as string);
 
-  if (!authHeader) return res.status(401).json({ message: "Chưa đăng nhập" });
+  if (!authHeader) {
+    return res.status(401).json({ message: "Chưa đăng nhập" });
+  }
 
-  const token = authHeader.split(" ")[1];
+  let token = authHeader;
 
-  if (!token) return res.status(401).json({ message: "Token không hợp lệ" });
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Token không hợp lệ" });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
-    req.user = decoded; // lưu payload vào req.user
+    req.user = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ message: "Token không hợp lệ hoặc hết hạn" });

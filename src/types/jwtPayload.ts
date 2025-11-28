@@ -6,5 +6,5 @@ export interface JwtPayload {
   email: string;
   province: string;
   usertype: string;
-  role: "member" | "admin";
+  role: "user" | "admin";
 }

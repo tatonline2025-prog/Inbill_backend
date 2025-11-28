@@ -75,7 +75,7 @@ router.post("/mark-paid-list", authenticate, authorize(["admin"]), markListInvoi
 // router.get("/fetchUncollectedInvoicesByUser", authenticate, fetchUncollectedInvoicesByUser);
 // router.get("/fetchCollectedInvoicesByUser", authenticate, fetchCollectedInvoicesByUser);
 
-router.get("/exportExcel", exportInvoicesToExcel);
+router.get("/exportExcel", authenticate, exportInvoicesToExcel);
 router.get("/exportExcelPrinted", exportCollectedInvoicesByDate);
 router.get("/exportExcelByUser", exportExcelByUser);
 router.get("/exportExcelCollected", exportExcelCollected);
