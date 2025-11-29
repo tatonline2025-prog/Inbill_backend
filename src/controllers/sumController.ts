@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 
-let MAX_ERROR_AMOUNT = 200000;
 const K_MAX_SAFE = 9;
 const TOP_B = 50000;
 
@@ -120,6 +119,7 @@ function findOneBestCombo(currentList: Item[], k: number, targetMax: number, tar
 
 export const findOptimalSum = async (req: Request, res: Response) => {
   const { moneyList, minTarget, maxTarget, count, limit = 5 } = req.body;
+  let MAX_ERROR_AMOUNT = 200000;
 
   if (!Array.isArray(moneyList) || !maxTarget || !count) {
     return res.status(400).json({ success: false, message: "Thiếu tham số." });
