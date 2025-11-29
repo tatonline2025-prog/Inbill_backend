@@ -295,18 +295,6 @@ export const findDuplicateInvoiceNumbers = async () => {
   }
 };
 
-export const resetInvoices = async () => {
-  try {
-    console.log("Tiến trình đang thực hiện");
-
-    const result = await Invoice.updateMany({}, { $set: { assignedTo: null } });
-
-    console.log("Đã reset thành công");
-  } catch (error) {
-    console.error("Lỗi khi xoá hoá đơn:", error);
-  }
-};
-
 export const deleteByBillingPeriod = async (req: Request, res: Response) => {
   try {
     const { billing_period } = req.query; // dạng "03/2025"

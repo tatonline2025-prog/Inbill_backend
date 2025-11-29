@@ -122,6 +122,81 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
   }
 };
 
+export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
+      });
+    }
+
+    const { collectionStatus } = req.query;
+
+    // console.log(collectionStatus, req.user);
+
+    // Thực hiện Aggregation để tính toán
+    const topStations = await Invoice.aggregate([
+      {
+        // Lọc dữ liệu (Match)
+        $match: {
+          assignedTo: new mongoose.Types.ObjectId(req.user._id.toString()),
+          collectionStatus: collectionStatus || "not_collected",
+          recordBookCode: { $nin: [null, "", undefined] },
+        },
+      },
+      {
+        // Gom nhóm và tính tổng (Group)
+        $group: {
+          _id: "$recordBookCode",
+          totalAmount: { $sum: { $toDouble: "$totalAmount" } },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        // Sắp xếp giảm dần theo tổng tiền (Sort)
+        $sort: {
+          totalAmount: -1,
+        },
+      },
+      {
+        // Lấy 3 kết quả đầu tiên (Limit)
+        $limit: 3,
+      },
+      {
+        // Định dạng lại dữ liệu trả về cho đẹp (Project)
+        $project: {
+          _id: 0,
+          stationName: "$_id", // Đổi tên field _id thành stationName
+          totalAmount: 1,
+          count: 1,
+        },
+      },
+    ]);
+
+    // 3️⃣ Nếu không có dữ liệu
+    if (!topStations || topStations.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // 4️⃣ Trả về dữ liệu
+    res.status(200).json({
+      success: true,
+      data: topStations,
+    });
+  } catch (error) {
+    console.error("Lỗi khi thống kê top 3 trạm:", error);
+    res.status(500).json({
+      success: false,
+      message: "Đã có lỗi xảy ra khi thống kê dữ liệu.",
+      error: (error as Error).message,
+    });
+  }
+};
+
 /**
  * Lấy tất cả hoá đơn ĐÃ THU được giao cho người dùng hiện tại.
  * GET /api/invoices/user/collected

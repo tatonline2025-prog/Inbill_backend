@@ -9,7 +9,7 @@ import authRoute from "./routes/authRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
 import sumRoute from "./routes/sumRoute";
-import { findDuplicateInvoiceNumbers, removeInvoice, resetInvoices } from "./controllers/invoiceController";
+import { findDuplicateInvoiceNumbers, removeInvoice } from "./controllers/invoiceController";
 import { updateAllCollectionFee } from "./controllers/userController";
 
 dotenv.config();
@@ -52,8 +52,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 // removeInvoice();
-
-// resetInvoices();
 
 // findDuplicateInvoiceNumbers();
 
