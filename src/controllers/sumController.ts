@@ -133,7 +133,7 @@ export const findOptimalSum = async (req: Request, res: Response) => {
   const { moneyList, minTarget, maxTarget, count, limit = 5 } = req.body;
   let MAX_ERROR_AMOUNT = 200000;
 
-  console.log(moneyList, minTarget, maxTarget, count);
+  // console.log(moneyList, minTarget, maxTarget, count);
 
   if (!Array.isArray(moneyList) || !maxTarget || !count) {
     return res.status(400).json({ success: false, message: "Thiếu tham số." });
