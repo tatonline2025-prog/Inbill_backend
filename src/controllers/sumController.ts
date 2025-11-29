@@ -62,6 +62,18 @@ function findOneBestCombo(currentList: Item[], k: number, targetMax: number, tar
   // Nếu số lượng phần tử còn lại ít hơn k thì không thể ghép
   if (N < k) return null;
 
+  if (k === 1) {
+    // Chỉ chọn 1 số gần max nhất trong khoảng min-max
+    let best: Item | null = null;
+    for (const item of currentList) {
+      if (item.val >= targetMin && item.val <= targetMax) {
+        if (!best || item.val > best.val) best = item;
+      }
+    }
+    if (best) return { sum: best.val, items: [best] };
+    return null;
+  }
+
   // Xử lý chia đôi MITM (Meet-in-the-middle)
   const K1 = Math.floor(k / 2);
   const K2 = k - K1;
@@ -120,6 +132,8 @@ function findOneBestCombo(currentList: Item[], k: number, targetMax: number, tar
 export const findOptimalSum = async (req: Request, res: Response) => {
   const { moneyList, minTarget, maxTarget, count, limit = 5 } = req.body;
   let MAX_ERROR_AMOUNT = 200000;
+
+  console.log(moneyList, minTarget, maxTarget, count);
 
   if (!Array.isArray(moneyList) || !maxTarget || !count) {
     return res.status(400).json({ success: false, message: "Thiếu tham số." });
