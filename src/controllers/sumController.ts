@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 
-const MAX_ERROR_AMOUNT = 200000;
+let MAX_ERROR_AMOUNT = 200000;
 const K_MAX_SAFE = 9;
 const TOP_B = 50000;
 
@@ -13,8 +13,6 @@ interface Combo {
   sum: number;
   items: Item[];
 }
-
-// --- Các hàm đệ quy (Giữ nguyên logic lõi) ---
 
 function getCombosWithSubset(
   list: Item[],
@@ -121,9 +119,9 @@ function findOneBestCombo(currentList: Item[], k: number, targetMax: number, tar
 }
 
 export const findOptimalSum = async (req: Request, res: Response) => {
-  const { moneyList, targetAmount, count, limit = 5 } = req.body;
+  const { moneyList, minTarget, maxTarget, count, limit = 5 } = req.body;
 
-  if (!Array.isArray(moneyList) || !targetAmount || !count) {
+  if (!Array.isArray(moneyList) || !maxTarget || !count) {
     return res.status(400).json({ success: false, message: "Thiếu tham số." });
   }
 
@@ -134,7 +132,12 @@ export const findOptimalSum = async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: `Count quá lớn (max=${K_MAX_SAFE}).` });
   }
 
-  const targetMax = targetAmount;
+  const targetMax = maxTarget;
+
+  if (minTarget && minTarget !== 0) {
+    MAX_ERROR_AMOUNT = maxTarget - minTarget;
+  }
+
   const targetMin = targetMax - MAX_ERROR_AMOUNT;
 
   // 1. Chuẩn bị dữ liệu
@@ -146,8 +149,6 @@ export const findOptimalSum = async (req: Request, res: Response) => {
 
   const finalResults: Combo[] = [];
 
-  // 2. LOGIC MỚI: Priority Loop
-  // Chạy k từ maxCount giảm dần về 1
   // Mục đích: Ưu tiên tìm các tổ hợp đủ số lượng trước.
   for (let currentK = maxCount; currentK >= 1; currentK--) {
     // Nếu đã tìm đủ số lượng limit yêu cầu thì dừng toàn bộ
@@ -182,6 +183,7 @@ export const findOptimalSum = async (req: Request, res: Response) => {
         sum: r.sum,
         count: r.items.length, // Trả thêm field này để client biết tổ hợp này có bao nhiêu số
         subset: r.items.map((i) => i.val),
+        indices: r.items.map((i) => i.id),
       })),
     });
   }
