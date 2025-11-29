@@ -133,20 +133,23 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
 
     const { collectionStatus } = req.query;
 
-    // console.log(collectionStatus, req.user);
+    // Tạo đối tượng lọc cơ bản (áp dụng cho cả Admin và User thường)
+    const matchQuery: any = {
+      collectionStatus: collectionStatus || "not_collected",
+      recordBookCode: { $nin: [null, "", undefined] },
+    };
 
-    // Thực hiện Aggregation để tính toán
+    // Kiểm tra quyền: Nếu KHÔNG PHẢI admin thì mới ép lọc theo assignedTo
+    if (req.user.role !== "admin") {
+      matchQuery.assignedTo = new mongoose.Types.ObjectId(req.user._id.toString());
+    }
+
+    // Thực hiện Aggregation
     const topStations = await Invoice.aggregate([
       {
-        // Lọc dữ liệu (Match)
-        $match: {
-          assignedTo: new mongoose.Types.ObjectId(req.user._id.toString()),
-          collectionStatus: collectionStatus || "not_collected",
-          recordBookCode: { $nin: [null, "", undefined] },
-        },
+        $match: matchQuery,
       },
       {
-        // Gom nhóm và tính tổng (Group)
         $group: {
           _id: "$recordBookCode",
           totalAmount: { $sum: { $toDouble: "$totalAmount" } },
@@ -154,27 +157,23 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
         },
       },
       {
-        // Sắp xếp giảm dần theo tổng tiền (Sort)
         $sort: {
           totalAmount: -1,
         },
       },
       {
-        // Lấy 3 kết quả đầu tiên (Limit)
         $limit: 3,
       },
       {
-        // Định dạng lại dữ liệu trả về cho đẹp (Project)
         $project: {
           _id: 0,
-          stationName: "$_id", // Đổi tên field _id thành stationName
+          stationName: "$_id",
           totalAmount: 1,
           count: 1,
         },
       },
     ]);
 
-    // 3️⃣ Nếu không có dữ liệu
     if (!topStations || topStations.length === 0) {
       return res.status(200).json({
         success: true,
@@ -182,7 +181,6 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
       });
     }
 
-    // 4️⃣ Trả về dữ liệu
     res.status(200).json({
       success: true,
       data: topStations,
