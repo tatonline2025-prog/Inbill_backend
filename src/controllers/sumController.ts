@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 
-const K_MAX_SAFE = 9;
-const TOP_B = 50000;
+// --- Hằng số cấu hình ---
+const K_MAX = 9; // Số lượng số hạng tối đa cho phép
+const MAX_RESULTS_LIMIT = 5; // Số lượng tổ hợp tối đa cần tìm
+const TARGET_SLACK = 200000; // Khoảng lỗi mặc định (200k)
+const MAX_EXECUTION_TIME_MS = 60000;
 
 interface Item {
   id: number;
@@ -11,200 +14,174 @@ interface Item {
 interface Combo {
   sum: number;
   items: Item[];
+  count: number;
 }
 
-function getCombosWithSubset(
+// Khai báo ngoài hàm để dễ dàng tái sử dụng/reset
+let currentBestCombo: Combo | null = null;
+
+// Hàm so sánh độ tốt của 2 Combo: Ưu tiên Count lớn hơn, sau đó Sum gần Max hơn
+function isBetterCombo(newCombo: Combo, targetMax: number): boolean {
+  const current = currentBestCombo;
+  if (!current) return true;
+
+  // 1. Ưu tiên Count (số lượng số hạng) lớn hơn
+  if (newCombo.count > current.count) return true;
+  if (newCombo.count < current.count) return false;
+
+  // 2. Nếu Count bằng nhau, ưu tiên Sum gần targetMax hơn
+  return newCombo.sum > current.sum;
+}
+
+/**
+ * Hàm Backtracking/DFS để tìm tổ hợp TỐT NHẤT TẠM THỜI từ danh sách hiện tại.
+ */
+function findOneOptimalComboDFS(
   list: Item[],
-  k: number,
+  kMax: number,
+  targetMin: number,
   targetMax: number,
-  results: Combo[],
+  deadline: number,
   start = 0,
-  sum = 0,
-  subset: Item[] = []
+  currentSum = 0,
+  currentSubset: Item[] = []
 ) {
-  if (sum > targetMax) return;
-  if (subset.length === k) {
-    results.push({ sum, items: [...subset] });
+  if (Date.now() > deadline) {
+    throw new Error("TIMEOUT"); // Ném lỗi để thoát ngay lập tức khỏi đệ quy
+  }
+
+  const currentCount = currentSubset.length;
+
+  // --- Cắt tỉa 1: Vượt quá K tối đa ---
+  if (currentCount > kMax) return;
+
+  // --- Cắt tỉa 2: Vượt quá Tổng tối đa ---
+  if (currentSum > targetMax) return;
+
+  // --- Điều kiện Dừng & Lưu kết quả (Chỉ lưu 1 tổ hợp tốt nhất) ---
+  if (currentCount > 0 && currentSum >= targetMin && currentSum <= targetMax) {
+    const newCombo: Combo = { sum: currentSum, items: [...currentSubset], count: currentCount };
+
+    // So sánh và cập nhật tổ hợp tốt nhất
+    if (isBetterCombo(newCombo, targetMax)) {
+      currentBestCombo = newCombo;
+    }
+  }
+
+  // Cắt tỉa 3: Nếu đã chọn kMax số rồi thì không cần tìm tiếp
+  let maxPossibleSum = currentSum;
+  for (let j = start; j < list.length; j++) {
+    maxPossibleSum += list[j].val;
+  }
+
+  if (maxPossibleSum < targetMin) {
     return;
   }
+
+  // --- Lặp đệ quy ---
   for (let i = start; i < list.length; i++) {
-    subset.push(list[i]);
-    getCombosWithSubset(list, k, targetMax, results, i + 1, sum + list[i].val, subset);
-    subset.pop();
-    if (results.length >= TOP_B) return;
+    const item = list[i];
+
+    // Cắt tỉa 4: Nếu tổng hiện tại + (kMax - currentCount) số nhỏ nhất còn lại
+    // trong danh sách còn lại mà vẫn không đủ targetMin, thì không cần tìm tiếp. (Phức tạp, tạm bỏ qua)
+
+    currentSubset.push(item);
+    findOneOptimalComboDFS(list, kMax, targetMin, targetMax, deadline, i + 1, currentSum + item.val, currentSubset);
+    currentSubset.pop(); // Backtrack
+
+    // Tối ưu hóa: Nếu đã tìm được tổ hợp tốt nhất với sum = targetMax, có thể dừng sớm.
+    if (currentBestCombo && currentBestCombo.sum === targetMax && currentBestCombo.count === kMax) return;
   }
 }
 
-function streamA(
-  list: Item[],
-  k: number,
-  targetMax: number,
-  callback: (sum: number, items: Item[]) => void,
-  start = 0,
-  sum = 0,
-  subset: Item[] = []
-) {
-  if (sum > targetMax) return;
-  if (subset.length === k) {
-    callback(sum, [...subset]);
-    return;
-  }
-  for (let i = start; i < list.length; i++) {
-    subset.push(list[i]);
-    streamA(list, k, targetMax, callback, i + 1, sum + list[i].val, subset);
-    subset.pop();
-  }
-}
-
-// --- Hàm tìm 1 tổ hợp tốt nhất với độ dài k CỐ ĐỊNH ---
-function findOneBestCombo(currentList: Item[], k: number, targetMax: number, targetMin: number): Combo | null {
-  const N = currentList.length;
-  // Nếu số lượng phần tử còn lại ít hơn k thì không thể ghép
-  if (N < k) return null;
-
-  if (k === 1) {
-    // Chỉ chọn 1 số gần max nhất trong khoảng min-max
-    let best: Item | null = null;
-    for (const item of currentList) {
-      if (item.val >= targetMin && item.val <= targetMax) {
-        if (!best || item.val > best.val) best = item;
-      }
-    }
-    if (best) return { sum: best.val, items: [best] };
-    return null;
-  }
-
-  // Xử lý chia đôi MITM (Meet-in-the-middle)
-  const K1 = Math.floor(k / 2);
-  const K2 = k - K1;
-
-  const A = currentList.slice(0, Math.ceil(N / 2));
-  const B = currentList.slice(Math.ceil(N / 2));
-
-  // 1. Tạo Combos B
-  const combosB: Combo[] = [];
-  getCombosWithSubset(B, K2, targetMax, combosB);
-  combosB.sort((a, b) => a.sum - b.sum);
-
-  let bestSum = -1;
-  let bestItems: Item[] = [];
-  let found = false;
-
-  // 2. Stream A và ghép
-  streamA(A, K1, targetMax, (sumA, itemsA) => {
-    const needMaxB = targetMax - sumA;
-    if (needMaxB < 0) return;
-
-    // Binary Search
-    let low = 0,
-      high = combosB.length - 1,
-      idx = -1;
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (combosB[mid].sum <= needMaxB) {
-        idx = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-
-    if (idx !== -1) {
-      const currentTotal = sumA + combosB[idx].sum;
-
-      // Logic chọn cái tốt nhất:
-      // 1. Phải nằm trong khoảng sai số (>= targetMin)
-      // 2. Phải lớn hơn bestSum hiện tại (càng gần targetMax càng tốt)
-      if (currentTotal >= targetMin && currentTotal > bestSum) {
-        bestSum = currentTotal;
-        bestItems = [...itemsA, ...combosB[idx].items];
-        found = true;
-      }
-    }
-  });
-
-  if (found) {
-    return { sum: bestSum, items: bestItems };
-  }
-  return null;
-}
-
+// --- Hàm chính xử lý yêu cầu ---
 export const findOptimalSum = async (req: Request, res: Response) => {
-  const { moneyList, minTarget, maxTarget, count, limit = 5 } = req.body;
-  let MAX_ERROR_AMOUNT = 200000;
+  try {
+    const { moneyList, minTarget, maxTarget, count, limit = MAX_RESULTS_LIMIT } = req.body;
 
-  // console.log(moneyList, minTarget, maxTarget, count);
+    if (!Array.isArray(moneyList) || !maxTarget || !count) {
+      return res.status(400).json({ success: false, message: "Thiếu tham số (moneyList, maxTarget, count)." });
+    }
 
-  if (!Array.isArray(moneyList) || !maxTarget || !count) {
-    return res.status(400).json({ success: false, message: "Thiếu tham số." });
-  }
+    const startTime = Date.now();
+    const deadline = startTime + MAX_EXECUTION_TIME_MS;
 
-  // Count bây giờ đóng vai trò là maxCount
-  const maxCount = count;
+    const maxCount = Math.min(+count, K_MAX);
+    const targetMax = +maxTarget;
 
-  if (maxCount > K_MAX_SAFE) {
-    return res.status(400).json({ success: false, message: `Count quá lớn (max=${K_MAX_SAFE}).` });
-  }
+    let targetMin = +minTarget || targetMax - TARGET_SLACK;
+    if (targetMin < 0) targetMin = 0;
 
-  const targetMax = maxTarget;
+    // Chuẩn bị dữ liệu
+    let availableItems: Item[] = moneyList
+      .map((v: any, index: number) => ({ id: index, val: +v }))
+      .filter((x) => !isNaN(x.val) && x.val > 0 && x.val <= targetMax)
+      .sort((a, b) => b.val - a.val); // Sắp xếp giảm dần để CẮT TỈA hiệu quả hơn
 
-  if (minTarget && minTarget !== 0) {
-    MAX_ERROR_AMOUNT = maxTarget - minTarget;
-  }
+    const finalResults: Combo[] = [];
 
-  const targetMin = targetMax - MAX_ERROR_AMOUNT;
+    // Vòng lặp Tìm kiếm Lặp tham lam (Greedy Iterative Search)
+    // Lặp cho đến khi tìm đủ 'limit' tổ hợp hoặc không tìm thấy tổ hợp nào nữa
+    for (let i = 0; i < limit; i++) {
+      // Reset và chạy tìm kiếm DFS để tìm tổ hợp TỐT NHẤT từ danh sách CÒN LẠI
+      currentBestCombo = null;
+      // iterationCount = 0;
+      findOneOptimalComboDFS(availableItems, maxCount, targetMin, targetMax, deadline);
 
-  // 1. Chuẩn bị dữ liệu
-  let availableItems: Item[] = moneyList
-    .map((v: any, index: number) => ({ id: index, val: +v }))
-    .filter((x) => !isNaN(x.val) && x.val > 0 && x.val <= targetMax);
-
-  availableItems.sort((a, b) => b.val - a.val);
-
-  const finalResults: Combo[] = [];
-
-  // Mục đích: Ưu tiên tìm các tổ hợp đủ số lượng trước.
-  for (let currentK = maxCount; currentK >= 1; currentK--) {
-    // Nếu đã tìm đủ số lượng limit yêu cầu thì dừng toàn bộ
-    if (finalResults.length >= limit) break;
-
-    // Nếu danh sách số còn lại ít hơn currentK thì bỏ qua vòng này (vì không đủ ghép)
-    if (availableItems.length < currentK) continue;
-
-    // Vòng lặp tìm kiếm (Greedy) cho currentK hiện tại
-    while (finalResults.length < limit) {
-      const bestCombo = findOneBestCombo(availableItems, currentK, targetMax, targetMin);
+      const bestCombo = currentBestCombo as Combo | null;
 
       if (bestCombo) {
         // Tìm thấy -> Lưu lại
         finalResults.push(bestCombo);
 
-        // Xoá các phần tử đã dùng
+        // Xóa các phần tử đã dùng khỏi danh sách CÒN LẠI
         const usedIds = new Set(bestCombo.items.map((item) => item.id));
         availableItems = availableItems.filter((item) => !usedIds.has(item.id));
+
+        // Log: Có thể thêm log tại đây để xem danh sách đã giảm đi như thế nào
+        // console.log(
+        //   `Tìm được Combo #${i + 1} (K=${bestCombo.count}, Sum=${bestCombo.sum}). Số mục còn lại: ${
+        //     availableItems.length
+        //   }`
+        // );
       } else {
-        // Không tìm thấy thêm tổ hợp nào với độ dài K này nữa -> Break để giảm K xuống
+        // Không tìm thấy thêm tổ hợp nào phù hợp từ danh sách còn lại
         break;
       }
     }
-  }
 
-  if (finalResults.length > 0) {
+    // 3. Phản hồi
+    if (finalResults.length > 0) {
+      return res.status(200).json({
+        success: true,
+        message: `Tìm được ${finalResults.length} tổ hợp độc lập.`,
+        results: finalResults.map((r) => ({
+          sum: r.sum,
+          count: r.count,
+          subset: r.items.map((i) => i.val),
+          indices: r.items.map((i) => i.id),
+        })),
+      });
+    }
+
     return res.status(200).json({
-      success: true,
-      message: `Tìm được ${finalResults.length} tổ hợp.`,
-      results: finalResults.map((r) => ({
-        sum: r.sum,
-        count: r.items.length, // Trả thêm field này để client biết tổ hợp này có bao nhiêu số
-        subset: r.items.map((i) => i.val),
-        indices: r.items.map((i) => i.id),
-      })),
+      success: false,
+      message: "Không tìm được tổ hợp nào phù hợp.",
+      results: [],
     });
-  }
+  } catch (error: any) {
+    if (error.message === "TIMEOUT") {
+      console.warn("Thuật toán đã bị dừng do quá thời gian cho phép.");
+      return res.status(408).json({
+        // 408 Request Timeout
+        success: false,
+        message: `Hệ thống đã dừng tìm kiếm vì quá thời gian xử lý (${
+          MAX_EXECUTION_TIME_MS / 1000
+        }s). Vui lòng thử lại với số lượng ít hơn.`,
+      });
+    }
 
-  return res.status(200).json({
-    success: false,
-    message: "Không tìm được tổ hợp nào phù hợp.",
-    results: [],
-  });
+    console.error("Lỗi trong quá trình tìm kiếm:", error);
+    return res.status(500).json({ success: false, message: "Lỗi nội bộ máy chủ." });
+  }
 };
