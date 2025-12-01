@@ -133,10 +133,13 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
 
     const { collectionStatus } = req.query;
 
-    // Tạo đối tượng lọc cơ bản (áp dụng cho cả Admin và User thường)
     const matchQuery: any = {
       collectionStatus: collectionStatus || "not_collected",
       recordBookCode: { $nin: [null, "", undefined] },
+
+      // --- THÊM DÒNG NÀY ĐỂ FIX LỖI 500 ---
+      // Chỉ lấy những dòng mà totalAmount là số hợp lệ
+      totalAmount: { $regex: /^\d+(\.\d+)?$/ },
     };
 
     // Kiểm tra quyền: Nếu KHÔNG PHẢI admin thì mới ép lọc theo assignedTo
@@ -147,7 +150,7 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
     // Thực hiện Aggregation
     const topStations = await Invoice.aggregate([
       {
-        $match: matchQuery,
+        $match: matchQuery, // Lúc này dữ liệu vào đã sạch, $toDouble sẽ không bị lỗi
       },
       {
         $group: {
@@ -186,11 +189,13 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
       data: topStations,
     });
   } catch (error) {
+    // TIP: Khi bị lỗi trên server, hãy in error.message ra để biết chính xác là gì
     console.error("Lỗi khi thống kê top 3 trạm:", error);
+
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi thống kê dữ liệu.",
-      error: (error as Error).message,
+      error: (error as Error).message, // Trả về message lỗi để debug
     });
   }
 };
