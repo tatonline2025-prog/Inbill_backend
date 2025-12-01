@@ -693,27 +693,33 @@ export const fetchTop20HighestInvoices = async (req: Request, res: Response) => 
  * Tìm kiếm hóa đơn theo Mã hóa đơn (chỉ trả về 20 kết quả).
  * GET /api/invoices/search
  */
+// backend/controllers/invoiceController.ts
+
 export const searchInvoice = async (req: Request, res: Response) => {
   try {
     const {
-      collectionStatus, // "collected" | "not_collected" | "all"
-      assignedUserId, // id của người thu
-      userprovince, // tỉnh của người dùng
-      searchInvoiceNumber, // mã hóa đơn
+      collectionStatus,
+      assignedUserId,
+      userprovince,
+      searchInvoiceNumber,
       searchType,
+      page = 1,
+      limit = 20,
     } = req.query;
 
-    // console.log(collectionStatus, assignedUserId, userprovince, searchInvoiceNumber, searchType);
+    // Chuyển đổi sang số
+    const pageNumber = parseInt(page as string, 10) || 1;
+    const limitNumber = parseInt(limit as string, 10) || 20;
+    const skip = (pageNumber - 1) * limitNumber;
 
-    // ⚙️ Tạo object điều kiện tìm kiếm cơ bản
+    // 1. Tạo điều kiện lọc (Giữ nguyên logic của bạn)
     const match: any = {};
 
-    // Lọc theo trạng thái thu tiền
+    match.totalAmount = { $regex: /^\d+(\.\d+)?$/ };
+
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
     }
-
-    // Lọc theo người phụ trách hoặc hoá đơn chưa có người phụ trách cùng tỉnh
     if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
       match.$or = [
         { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
@@ -722,17 +728,9 @@ export const searchInvoice = async (req: Request, res: Response) => {
         },
       ];
     }
-
-    // Nếu user KHÔNG phải là admin -> Bắt buộc chỉ tìm thấy hoá đơn isPaid false
     if (req.user?.role !== "admin") {
-      // $ne: true nghĩa là lấy tất cả các trường hợp:
-      // 1. isPaid = false
-      // 2. isPaid = null
-      // 3. Không có trường isPaid
       match.isPaid = { $ne: true };
     }
-
-    // Lọc theo mã hóa đơn
     if (searchType && searchType === "station") {
       match.recordBookCode = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     } else if (searchType && searchType === "customer") {
@@ -741,17 +739,42 @@ export const searchInvoice = async (req: Request, res: Response) => {
       match.customerName = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
     }
 
-    // ✅ Thực thi truy vấn
-    const invoices = await Invoice.find(match)
-      .populate("assignedTo", "fullName email phone collectionFee")
-      .collation({ locale: "en_US", numericOrdering: true })
-      .sort({ totalAmount: -1 })
-      .limit(20); // giới hạn kết quả trả về để tránh quá tải
+    // 2. Thực thi song song 3 truy vấn để tối ưu tốc độ
+    const [invoices, totalCount, totalAmountResult] = await Promise.all([
+      // Query 1: Lấy danh sách phân trang (Data)
+      Invoice.find(match)
+        .populate("assignedTo", "fullName email phone collectionFee")
+        .collation({ locale: "en_US", numericOrdering: true })
+        .sort({ totalAmount: -1 })
+        .skip(skip)
+        .limit(limitNumber),
 
+      // Query 2: Đếm tổng số bản ghi (Count)
+      Invoice.countDocuments(match),
+
+      // Query 3: Tính tổng tiền toàn bộ kết quả tìm thấy (Sum)
+      Invoice.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $toDouble: "$totalAmount" } },
+          },
+        },
+      ]),
+    ]);
+
+    const totalRevenue = totalAmountResult.length > 0 ? totalAmountResult[0].total : 0;
+
+    // 3. Trả về kết quả
     res.status(200).json({
       success: true,
       data: invoices,
       count: invoices.length,
+      total: totalCount,
+      totalAmount: totalRevenue,
+      totalPages: Math.ceil(totalCount / limitNumber),
+      currentPage: pageNumber,
     });
   } catch (error) {
     console.error("searchInvoice error:", error);
