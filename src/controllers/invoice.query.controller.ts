@@ -793,24 +793,36 @@ export const searchInvoice = async (req: Request, res: Response) => {
  */
 export const searchInvoicesByDate = async (req: Request, res: Response) => {
   try {
-    const { assignedUserId, userprovince, selectedDate } = req.query;
-    const user = req.user; // user đã được middleware auth gắn vào
+    const {
+      assignedUserId,
+      userprovince,
+      selectedDate,
+      page = 1, // Mặc định trang 1
+      limit = 20, // Mặc định 20 dòng
+    } = req.query;
+
+    const user = req.user;
 
     if (!user) {
-      return res.status(400).json({ message: "Không xác định được người dùng." });
+      return res.status(400).json({ success: false, message: "Không xác định được người dùng." });
     }
 
     // Kiểm tra tham số bắt buộc
     if (!assignedUserId || !selectedDate) {
-      return res.status(400).json({ message: "Thiếu tham số bắt buộc." });
+      return res.status(400).json({ success: false, message: "Thiếu tham số bắt buộc." });
     }
 
     // Thiếu province chỉ hợp lệ nếu user là admin
     if (!userprovince && user?.role !== "admin") {
-      return res.status(400).json({ message: "Thiếu thông tin tỉnh thành." });
+      return res.status(400).json({ success: false, message: "Thiếu thông tin tỉnh thành." });
     }
 
-    // Cấu hình timezone
+    // 1. Xử lý phân trang
+    const pageNumber = parseInt(page as string, 10) || 1;
+    const limitNumber = parseInt(limit as string, 10) || 20;
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // 2. Xử lý thời gian (Timezone)
     dayjs.extend(utc);
     dayjs.extend(timezone);
 
@@ -818,28 +830,60 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
     const startOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").startOf("day").toDate();
     const endOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").endOf("day").toDate();
 
-    // console.log("Ngày truy vấn:", { startOfDay, endOfDay });
-
-    // Xây dựng điều kiện tìm kiếm động
-    const query: any = {
+    // 3. Xây dựng điều kiện lọc (Match Query)
+    const match: any = {
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     };
 
-    // Nếu KHÔNG phải admin thì thêm điều kiện theo tỉnh
+    // Nếu KHÔNG phải admin thì thêm điều kiện theo tỉnh và người được giao
     if (user?.role !== "admin") {
-      query.province = userprovince;
-      query.assignedTo = assignedUserId;
+      match.province = userprovince;
+      // Lưu ý: Khi dùng aggregate, nên ép kiểu ObjectId để đảm bảo chính xác
+      match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
     }
+    // Nếu bạn muốn Admin cũng lọc theo assignedUserId khi có truyền lên, hãy mở comment dòng dưới:
+    // else if (assignedUserId) { match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string); }
 
-    const invoices = await Invoice.find(query)
-      .populate("assignedTo", "fullName email phone collectionFee")
-      .sort({ collectionDate: -1 });
+    // 4. Thực thi song song 3 truy vấn (Data, Count, Sum Amount)
+    const [invoices, totalCount, totalAmountResult] = await Promise.all([
+      // Query 1: Lấy danh sách phân trang
+      Invoice.find(match)
+        .populate("assignedTo", "fullName email phone collectionFee")
+        .sort({ collectionDate: -1 }) // Giữ nguyên sort theo ngày thu
+        .skip(skip)
+        .limit(limitNumber),
 
-    res.status(200).json({ data: invoices });
+      // Query 2: Đếm tổng số bản ghi
+      Invoice.countDocuments(match),
+
+      // Query 3: Tính tổng tiền
+      Invoice.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $toDouble: "$totalAmount" } }, // Chuyển string sang double để cộng
+          },
+        },
+      ]),
+    ]);
+
+    const totalRevenue = totalAmountResult.length > 0 ? totalAmountResult[0].total : 0;
+
+    // 5. Trả về kết quả đúng định dạng yêu cầu
+    res.status(200).json({
+      success: true,
+      data: invoices,
+      count: invoices.length, // Số bản ghi của trang hiện tại
+      total: totalCount, // Tổng số bản ghi tìm thấy trong DB
+      totalAmount: totalRevenue, // Tổng tiền
+      totalPages: Math.ceil(totalCount / limitNumber),
+      currentPage: pageNumber,
+    });
   } catch (error) {
-    console.error("Lỗi searchByDate:", error);
-    res.status(500).json({ message: "Lỗi khi tìm hóa đơn theo ngày." });
+    console.error("Lỗi searchInvoicesByDate:", error);
+    res.status(500).json({ success: false, message: "Lỗi khi tìm hóa đơn theo ngày." });
   }
 };
 
