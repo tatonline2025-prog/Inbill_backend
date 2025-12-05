@@ -750,7 +750,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
       Invoice.find(match)
         .populate("assignedTo", "fullName email phone collectionFee")
         .collation({ locale: "en_US", numericOrdering: true })
-        .sort({ totalAmount: -1 })
+        .sort({ totalAmount: -1, _id: -1 })
         .skip(skip)
         .limit(limitNumber),
 
@@ -850,7 +850,7 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
       // Query 1: Lấy danh sách phân trang
       Invoice.find(match)
         .populate("assignedTo", "fullName email phone collectionFee")
-        .sort({ collectionDate: -1 }) // Giữ nguyên sort theo ngày thu
+        .sort({ collectionDate: -1, _id: -1 }) // Giữ nguyên sort theo ngày thu
         .skip(skip)
         .limit(limitNumber),
 
