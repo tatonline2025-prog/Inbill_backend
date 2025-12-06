@@ -12,7 +12,7 @@ import { generateTransactionExcel } from "../utils/generateTransactionExcel";
  * @access  Private/Admin
  */
 export const createTransactionType = async (req: Request, res: Response) => {
-  const { name, discountPercent, description, selectedBankId } = req.body;
+  const { name, description } = req.body;
   if (!req.user) {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
@@ -32,8 +32,6 @@ export const createTransactionType = async (req: Request, res: Response) => {
 
     const newTransactionType = new TransactionType({
       name,
-      discountPercent,
-      bankId: selectedBankId,
       description: description || "",
       createdBy: adminId,
     });
@@ -90,7 +88,7 @@ export const updateTransactionType = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
-  const { transactionTypeId, name, discountPercent, description, selectedBankId } = req.body;
+  const { transactionTypeId, name, description } = req.body;
 
   try {
     const existingType = await TransactionType.findOne({
@@ -106,8 +104,6 @@ export const updateTransactionType = async (req: Request, res: Response) => {
       transactionTypeId,
       {
         name,
-        discountPercent,
-        bankId: selectedBankId,
         description: description || "",
         updatedAt: new Date(),
         createdBy: req.user._id,
@@ -135,10 +131,7 @@ export const getTransactionTypes = async (req: Request, res: Response) => {
   }
 
   try {
-    const types = await TransactionType.find({})
-      .select("_id name description discountPercent")
-      .populate("bankId", "_id accountHolder accountNumber bankName")
-      .sort({ name: 1 });
+    const types = await TransactionType.find({}).select("_id name description").sort({ name: 1 });
 
     if (types.length === 0) {
       return res.status(200).json({
@@ -166,22 +159,27 @@ export const createBank = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
-  const { bankName, accountNumber, accountHolder, branch } = req.body.formData;
-
+  // Lấy tên ngân hàng và loại bỏ khoảng trắng thừa ở đầu/cuối
+  const rawBankName = req.body.formData.bankName.trim();
   const adminId = req.user._id;
 
   try {
-    const existingBank = await Bank.findOne({ accountNumber });
+    // --- KHÚC QUAN TRỌNG NHẤT ---
+    // Sử dụng $regex để tìm kiếm không phân biệt hoa thường.
+    // ^ và $ để đảm bảo trùng khớp hoàn toàn (tránh trường hợp "Vietcom" tìm ra "Vietcombank")
+    // 'i' là option case-insensitive
+    const existingBank = await Bank.findOne({
+      bankName: { $regex: new RegExp(`^${rawBankName}$`, "i") },
+    });
 
     if (existingBank) {
-      return res.status(409).json({ message: "Số tài khoản này đã được thêm vào hệ thống." });
+      // Nếu tìm thấy (dù là VietcomBank, VIETCOMBANK...) thì báo lỗi
+      return res.status(409).json({ message: "Hình thức thanh toán này đã được thêm vào hệ thống." });
     }
 
+    // Nếu chưa có thì mới tạo mới và lưu dưới dạng chữ thường (như bạn muốn)
     const newBank = new Bank({
-      bankName,
-      accountNumber,
-      accountHolder,
-      branch: branch || "",
+      bankName: rawBankName,
       createdBy: adminId,
     });
 
@@ -206,34 +204,33 @@ export const updateBank = async (req: Request, res: Response) => {
     return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
-  const updateData = req.body;
-  const { bankId } = updateData;
-  const { bankName, accountNumber, accountHolder, branch } = updateData.formData;
+  const { bankId } = req.body;
+  const rawBankName = req.body.formData.bankName ? req.body.formData.bankName.trim() : "";
 
-  // Kiểm tra dữ liệu bắt buộc (ví dụ: không cho phép các trường chính bị trống)
-  if (!bankName || !accountNumber || !accountHolder) {
-    return res.status(400).json({ message: "Tên ngân hàng, Số tài khoản và Tên chủ tài khoản là bắt buộc." });
+  if (!rawBankName) {
+    return res.status(400).json({ message: "Tên ngân hàng là bắt buộc." });
   }
 
   try {
-    // 4. Kiểm tra sự tồn tại của số tài khoản mới (trừ chính tài khoản đang sửa)
-    const existingBankWithNewAccount = await Bank.findOne({
-      accountNumber,
-      _id: { $ne: bankId },
+    // --- LOGIC KIỂM TRA TRÙNG LẶP ---
+    // 1. Dùng Regex để so sánh không phân biệt hoa thường
+    // 2. Dùng $ne (not equal) để loại trừ chính bản ghi đang sửa (bankId)
+    const existingBank = await Bank.findOne({
+      bankName: { $regex: new RegExp(`^${rawBankName}$`, "i") }, // So sánh: VietcomBank == vietcombank
+      _id: { $ne: bankId }, // Không check chính nó
     });
 
-    if (existingBankWithNewAccount) {
-      return res.status(400).json({ message: "Số tài khoản này đã được đăng ký cho ngân hàng khác." });
+    if (existingBank) {
+      return res.status(400).json({ message: "Tên hình thức thanh toán này đã được đăng ký." });
     }
 
+    // --- CẬP NHẬT ---
     const updatedBank = await Bank.findByIdAndUpdate(
       bankId,
       {
-        bankName,
-        accountNumber,
-        accountHolder,
-        branch: branch || "", // Cập nhật chi nhánh (có thể là chuỗi rỗng)
-        updatedAt: new Date(), // Gợi ý: Thêm trường updatedAt
+        // Lưu dưới dạng chữ thường để đồng bộ với createBank (hoặc rawBankName tuỳ bạn chọn)
+        bankName: rawBankName,
+        updatedAt: new Date(),
       },
       { new: true, runValidators: true }
     );
@@ -262,8 +259,7 @@ export const getBanks = async (req: Request, res: Response) => {
   }
 
   try {
-    // 2. Kiểm tra xem Số tài khoản đã tồn tại chưa (vì nó phải là unique)
-    const banks = await Bank.find({}).select("bankName accountNumber accountHolder branch");
+    const banks = await Bank.find({}).select("bankName");
 
     if (banks.length === 0) {
       return res.status(200).json({
@@ -337,9 +333,9 @@ export const getAllTransactionsForAdmin = async (req: Request, res: Response) =>
 
     // 4. Lấy dữ liệu và Populate các khóa ngoại
     const transactions = await Transaction.find(filter)
-      .populate("creatorId", "fullName username") // Lấy tên CTV
+      .populate("creatorId", "fullName username bankAccount bankName") // Lấy tên CTV
+      .populate("paymentSourceId", "bankName") // Lấy tên Loại GD
       .populate("typeId", "name") // Lấy tên Loại GD
-      .populate("paymentBankId", "bankName accountNumber accountHolder") // Lấy thông tin Bank (nếu đã duyệt)
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -364,6 +360,7 @@ export const approveTransaction = async (req: Request, res: Response) => {
 
   const transactionId = req.params.id;
   const adminId = req.user?._id;
+  const { paymentBankId } = req.body;
 
   try {
     const transaction = await Transaction.findById(transactionId);
@@ -380,6 +377,7 @@ export const approveTransaction = async (req: Request, res: Response) => {
 
     transaction.status = "APPROVED";
     transaction.approvedByAdminId = new Types.ObjectId(adminId);
+    transaction.paymentSourceId = new Types.ObjectId(paymentBankId);
 
     const approvedTransaction = await transaction.save();
 
@@ -440,13 +438,16 @@ export const getDailyReport = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
   if (req.user.role !== "admin") {
-    return res.status(400).json({ message: "..." });
+    return res.status(403).json({ message: "Bạn không có quyền xem báo cáo." });
   }
 
   const { startDate, endDate } = req.query;
 
   // 1. Xây dựng điều kiện lọc ngày
   let matchCondition: any = {};
+
+  // Mặc định: Nếu không chọn ngày, lọc tất cả.
+  // Nếu có startDate/endDate, query theo range.
   if (startDate || endDate) {
     matchCondition.createdAt = {};
     if (startDate) {
@@ -454,7 +455,7 @@ export const getDailyReport = async (req: Request, res: Response) => {
     }
     if (endDate) {
       const nextDay = new Date(endDate as string);
-      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setDate(nextDay.getDate() + 1); // Cộng thêm 1 ngày để lấy hết ngày endDate
       matchCondition.createdAt.$lt = nextDay;
     }
   }
@@ -465,12 +466,14 @@ export const getDailyReport = async (req: Request, res: Response) => {
 
       {
         $lookup: {
-          from: "transactiontypes", // Tên collection trong MongoDB (thường là tên Model viết thường + 's')
-          localField: "typeId", // Trường trong Transaction
-          foreignField: "_id", // Trường trong TransactionType
-          as: "typeInfo", // Tên field tạm để chứa kết quả
+          from: "transactiontypes",
+          localField: "typeId",
+          foreignField: "_id",
+          as: "typeInfo",
         },
       },
+      // Làm phẳng mảng typeInfo (biến mảng 1 phần tử thành object)
+      { $unwind: { path: "$typeInfo", preserveNullAndEmptyArrays: true } },
 
       {
         $lookup: {
@@ -480,28 +483,40 @@ export const getDailyReport = async (req: Request, res: Response) => {
           as: "creatorInfo",
         },
       },
+      // Làm phẳng mảng creatorInfo
+      { $unwind: { path: "$creatorInfo", preserveNullAndEmptyArrays: true } },
 
       { $sort: { createdAt: -1 } },
 
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+              timezone: "+07:00", // QUAN TRỌNG: Chuyển về giờ Việt Nam để cắt ngày đúng
+            },
+          },
           totalTransactions: { $sum: 1 },
           totalAmount: { $sum: "$amount" },
           totalFinalAmount: { $sum: "$finalAmount" },
 
-          // Đẩy thông tin chi tiết vào mảng transactions
           transactions: {
             $push: {
               _id: "$_id",
-              // Lấy phần tử đầu tiên trong mảng kết quả lookup
-              transactionType: { $arrayElemAt: ["$typeInfo.name", 0] }, // Giả sử Model TransactionType có field 'name'
-              creatorName: { $arrayElemAt: ["$creatorInfo.fullName", 0] }, // Giả sử Model User có field 'fullName'
-              discountPercent: { $arrayElemAt: ["$typeInfo.discountPercent", 0] },
+              transactionType: "$typeInfo.name", // Lấy trực tiếp do đã unwind
+              creatorName: "$creatorInfo.fullName", // Lấy trực tiếp do đã unwind
+
+              creatorBankName: "$creatorInfo.bankName",
+              creatorBankAccount: "$creatorInfo.bankAccount",
+
+              discountPercent: "$discountPercent",
+
               amount: "$amount",
               finalAmount: "$finalAmount",
-              createdAt: "$createdAt",
               status: "$status",
+              createdAt: "$createdAt",
+              note: "$note",
             },
           },
         },
@@ -514,7 +529,7 @@ export const getDailyReport = async (req: Request, res: Response) => {
           _id: 0,
           date: "$_id",
           totalTransactions: 1,
-          totalAmount: { $round: ["$totalAmount", 0] }, // Làm tròn tiền (VND thường không có số thập phân)
+          totalAmount: { $round: ["$totalAmount", 0] },
           totalFinalAmount: { $round: ["$totalFinalAmount", 0] },
           transactions: 1,
         },
@@ -661,9 +676,9 @@ export const exportAllTransactions = async (req: Request, res: Response) => {
     }
 
     const transactions = await Transaction.find(filter)
-      .populate("creatorId", "fullName code")
-      .populate("typeId", "name discountPercent")
-      .populate("paymentBankId", "bankName accountNumber")
+      .populate("creatorId", "fullName bankName bankAccount")
+      .populate("typeId", "name")
+      .populate("paymentSourceId", "bankName")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -679,11 +694,10 @@ export const exportAllTransactions = async (req: Request, res: Response) => {
       "Tên CTV": t.creatorId?.fullName || "N/A",
       "Loại Giao Dịch": t.typeId?.name || "N/A",
       "Số Tiền Gốc": t.amount,
-      "Chiết Khấu (%)": t.typeId?.discountPercent,
+      "Chiết Khấu (%)": t.discountPercent,
       "Tổng Tiền (Sau CK)": t.finalAmount,
-      "Ngân Hàng": t.paymentBankId
-        ? `${t.paymentBankId.bankName} - ${t.paymentBankId.accountNumber}`
-        : "Tiền mặt / Khác",
+      "Ngân Hàng CTV": t.creatorId ? `${t.creatorId.bankName} - ${t.creatorId.bankAccount}` : "Tiền mặt / Khác",
+      "Hình thức": t.paymentSourceId ? `${t.paymentSourceId.bankName}` : "Chưa được duyệt",
       "Trạng Thái": t.status === "APPROVED" ? "Đã duyệt" : t.status === "PENDING" ? "Chờ duyệt" : "Đã hủy",
       "Ngày Tạo": new Date(t.createdAt).toLocaleDateString("vi-VN"),
     }));
@@ -709,7 +723,7 @@ export const createTransaction = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
 
-  const { amount, typeId } = req.body;
+  const { amount, discountPercent, typeId } = req.body;
 
   const creatorId = req.user._id;
 
@@ -719,7 +733,7 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Loại giao dịch không hợp lệ." });
     }
 
-    const finalAmount = amount * (1 - transactionType.discountPercent / 100);
+    const finalAmount = amount * (1 - discountPercent / 100);
 
     if (finalAmount < 0) {
       return res.status(400).json({ message: "Số tiền sau chiết khấu không được âm." });
@@ -727,9 +741,9 @@ export const createTransaction = async (req: Request, res: Response) => {
 
     const newTransaction = new Transaction({
       amount,
+      discountPercent,
       finalAmount: finalAmount.toFixed(2),
       typeId,
-      paymentBankId: transactionType.bankId._id,
       creatorId,
       status: "PENDING",
       // approvedByAdminId sẽ là null mặc định
@@ -757,8 +771,8 @@ export const getUserTransactions = async (req: Request, res: Response) => {
   try {
     // Tìm tất cả giao dịch có creatorId trùng với ID của User
     const transactions = await Transaction.find({ creatorId })
-      .populate("typeId", "name discountPercent")
-      .populate("paymentBankId", "_id bankName accountNumber accountHolder")
+      .populate("typeId", "name")
+      .populate("paymentSourceId", " bankName")
       .populate("creatorId", " bankName bankAccount")
       .sort({ createdAt: -1 }); // Sắp xếp GD mới nhất hiển thị ở trên
 
@@ -778,61 +792,60 @@ export const updateTransaction = async (req: Request, res: Response) => {
   }
 
   const transactionId = req.params.id;
-  const { amount, typeId } = req.body;
+  const { amount, typeId, discountPercent } = req.body;
   const creatorId = req.user._id;
 
   try {
     const transaction = await Transaction.findById(transactionId);
 
-    // 1. Kiểm tra sự tồn tại của Giao dịch
     if (!transaction) {
       return res.status(404).json({ message: "Không tìm thấy giao dịch." });
     }
 
-    // 2. Kiểm tra quyền sở hữu
     if (transaction.creatorId.toString() !== creatorId.toString()) {
       return res.status(403).json({ message: "Bạn không có quyền chỉnh sửa giao dịch này." });
     }
 
-    // 3. Kiểm tra trạng thái (Quy tắc nghiệp vụ: KHÔNG sửa nếu ĐÃ DUYỆT/HỦY)
     if (transaction.status !== "PENDING") {
       return res.status(403).json({
         message: `Chỉ có thể chỉnh sửa giao dịch ở trạng thái CHỜ DUYỆT. Trạng thái hiện tại: ${transaction.status}.`,
       });
     }
 
-    // 4. Cập nhật thông tin (Chỉ cập nhật các trường được phép)
-    let transactionType;
-
+    // Cập nhật Amount
     if (amount !== undefined) {
+      // Kiểm tra giá trị hợp lệ
+      if (typeof amount !== "number" || amount < 0) {
+        return res.status(400).json({ message: "Số tiền không hợp lệ." });
+      }
       transaction.amount = amount;
     }
 
+    // Cập nhật TypeId
     if (typeId !== undefined) {
-      transactionType = await TransactionType.findById(typeId);
+      const transactionType = await TransactionType.findById(typeId);
 
       if (!transactionType) {
         return res.status(400).json({ message: "Loại giao dịch không hợp lệ." });
       }
-
       transaction.typeId = typeId;
     }
 
-    // 5. TÍNH TOÁN LẠI finalAmount
-    if (amount !== undefined || typeId !== undefined) {
-      const newAmount = transaction.amount;
-      let discountPercent;
-
-      if (transactionType) {
-        discountPercent = transactionType.discountPercent;
-      } else {
-        const currentType = await TransactionType.findById(transaction.typeId);
-        discountPercent = currentType?.discountPercent ?? 0;
+    if (discountPercent !== undefined) {
+      // Kiểm tra giá trị hợp lệ (0% - 100%)
+      if (typeof discountPercent !== "number" || discountPercent < 0 || discountPercent > 100) {
+        return res.status(400).json({ message: "Chiết khấu phải là số từ 0 đến 100." });
       }
-
-      const newFinalAmount = newAmount * (1 - discountPercent / 100);
-      transaction.finalAmount = Number(newFinalAmount.toFixed(2));
+      transaction.discountPercent = discountPercent;
     }
+
+    const newAmount = transaction.amount;
+    const currentDiscount = transaction.discountPercent; // Lấy discountPercent mới/cũ từ transaction
+
+    const newFinalAmount = newAmount * (1 - currentDiscount / 100);
+
+    // Làm tròn 2 chữ số thập phân (nếu cần) và gán lại cho transaction
+    transaction.finalAmount = Number(newFinalAmount.toFixed(2));
 
     // 6. Lưu và trả về
     const updatedTransaction = await transaction.save();

@@ -9,26 +9,9 @@ const bankSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Số tài khoản ngân hàng
-    accountNumber: {
-      type: String,
-      required: true,
-      unique: true, // Số tài khoản phải là duy nhất
-      trim: true,
-    },
-
-    // Tên chủ tài khoản
-    accountHolder: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    // Chi nhánh (Tùy chọn)
-    branch: {
-      type: String,
-      required: false,
-      trim: true,
+    isActive: {
+      type: Boolean,
+      default: true,
     },
 
     // Lưu ID của Admin đã thêm thông tin bank này
