@@ -8,6 +8,7 @@ import userRoute from "./routes/userRoute";
 import authRoute from "./routes/authRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
+import transactionRoute from "./routes/transactionRoutes";
 import sumRoute from "./routes/sumRoute";
 import { findDuplicateInvoiceNumbers, removeInvoice } from "./controllers/invoiceController";
 import { updateAllCollectionFee } from "./controllers/userController";
@@ -45,6 +46,7 @@ app.use("/api/auth", authRoute);
 app.use("/api/user", userRoute);
 app.use("/api/invoices", invoiceRoute);
 app.use("/api/invoiceslayout", invoiceRouteLayout);
+app.use("/api/transaction", transactionRoute);
 
 app.use("/api/v1/finance", sumRoute);
 

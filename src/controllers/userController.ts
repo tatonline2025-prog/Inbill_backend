@@ -16,16 +16,16 @@ export const fetchallUser = async (req: Request, res: Response) => {
 };
 
 export const changeInfo = async (req: Request, res: Response) => {
-  if (req.user?.role !== "admin") {
+  if (!req.user) {
     return res.status(403).json({
       success: false,
-      message: "Bạn không có quyền thực hiện hành động này.",
+      message: "Không xác thực được người dùng.",
     });
   }
 
   try {
     const { editinguserId } = req.body;
-    const { fullName, email, province, username, pass, phone, usertype } = req.body.formData;
+    const { fullName, email, province, username, pass, phone, usertype, bankAccount, bankName } = req.body.formData;
 
     const user = await User.findById(editinguserId);
 
@@ -35,8 +35,18 @@ export const changeInfo = async (req: Request, res: Response) => {
     user.email = email;
     user.province = province;
     user.phone = phone;
-    user.usertype = usertype;
     user.username = username;
+
+    if (usertype !== undefined && usertype.trim() !== "") {
+      user.usertype = usertype;
+    }
+
+    if (bankAccount !== undefined) {
+      user.bankAccount = bankAccount;
+    }
+    if (bankName !== undefined) {
+      user.bankName = bankName;
+    }
 
     // Mã hóa mật khẩu mới
     // Chỉ cập nhật mật khẩu nếu có thông tin mới

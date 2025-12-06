@@ -15,6 +15,9 @@ const userSchema = new mongoose.Schema(
 
     phone: { type: String, unique: true },
 
+    bankAccount: { type: String, unique: true },
+    bankName: { type: String },
+
     province: {
       type: String,
       required: false, // Có thể để optional nếu không bắt buộc
