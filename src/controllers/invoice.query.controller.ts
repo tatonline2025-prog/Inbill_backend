@@ -124,6 +124,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
 
 export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
   try {
+    // 1. Validate User
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
@@ -133,40 +134,61 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
 
     const { collectionStatus } = req.query;
 
+    // 2. Xây dựng Match Query (BỎ Regex totalAmount tại đây)
     const matchQuery: any = {
       collectionStatus: collectionStatus || "not_collected",
-      recordBookCode: { $nin: [null, "", undefined] },
-
-      // --- THÊM DÒNG NÀY ĐỂ FIX LỖI 500 ---
-      // Chỉ lấy những dòng mà totalAmount là số hợp lệ
-      totalAmount: { $regex: /^\d+(\.\d+)?$/ },
+      // Chỉ lấy những dòng có mã trạm, không bị null/rỗng
+      recordBookCode: { $exists: true, $ne: "" },
     };
 
-    // Kiểm tra quyền: Nếu KHÔNG PHẢI admin thì mới ép lọc theo assignedTo
+    // Kiểm tra quyền: Nếu KHÔNG PHẢI admin thì lọc theo user
     if (req.user.role !== "admin") {
       matchQuery.assignedTo = new mongoose.Types.ObjectId(req.user._id.toString());
     }
 
-    // Thực hiện Aggregation
+    // 3. Aggregate Tối ưu
     const topStations = await Invoice.aggregate([
-      {
-        $match: matchQuery, // Lúc này dữ liệu vào đã sạch, $toDouble sẽ không bị lỗi
-      },
+      // Bước 1: Filter nhanh bằng Index (assignedTo, collectionStatus)
+      { $match: matchQuery },
+
+      // Bước 2: Group và tính tổng an toàn
       {
         $group: {
           _id: "$recordBookCode",
-          totalAmount: { $sum: { $toDouble: "$totalAmount" } },
+          totalAmount: {
+            $sum: {
+              $cond: [
+                // Nếu totalAmount là chuỗi rỗng hoặc null -> tính là 0
+                { $in: ["$totalAmount", [null, "", "Không nợ cước"]] },
+                0,
+                {
+                  // Convert an toàn: Bỏ dấu phẩy rồi chuyển sang số
+                  // Nếu lỗi (vd: chứa chữ cái lạ) -> trả về 0 (nhờ onError)
+                  $convert: {
+                    input: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } },
+                    to: "double",
+                    onError: 0,
+                    onNull: 0,
+                  },
+                },
+              ],
+            },
+          },
           count: { $sum: 1 },
         },
       },
+
+      // Bước 3: Sắp xếp giảm dần theo tổng tiền
       {
-        $sort: {
-          totalAmount: -1,
-        },
+        $sort: { totalAmount: -1 },
       },
+
+      // Bước 4: Lấy top 3
       {
         $limit: 3,
       },
+
+      // Bước 5: Format lại dữ liệu đầu ra
       {
         $project: {
           _id: 0,
@@ -177,6 +199,7 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
       },
     ]);
 
+    // 4. Trả về kết quả
     if (!topStations || topStations.length === 0) {
       return res.status(200).json({
         success: true,
@@ -189,13 +212,11 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
       data: topStations,
     });
   } catch (error) {
-    // TIP: Khi bị lỗi trên server, hãy in error.message ra để biết chính xác là gì
     console.error("Lỗi khi thống kê top 3 trạm:", error);
-
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi thống kê dữ liệu.",
-      error: (error as Error).message, // Trả về message lỗi để debug
+      error: (error as Error).message,
     });
   }
 };
@@ -352,12 +373,9 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const page = parseInt(currentPage as string, 10);
     const limit = parseInt(invoicesPerPage as string, 10);
     const skip = (page - 1) * limit;
-
     const isPaidBool = isPaid === "true";
 
     let assignedUser = assignedUserId;
-
-    // ✅ Pipeline aggregate
     const match: any = {};
 
     if (req.user?.role === "admin") {
@@ -386,10 +404,10 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one") {
       // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
       match.$or = [
-        // 1️⃣ Hóa đơn đã được giao cho chính người đó
+        // Hóa đơn đã được giao cho chính người đó
         { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
 
-        // 2️⃣ Hóa đơn chưa giao + cùng tỉnh
+        // Hóa đơn chưa giao + cùng tỉnh
         {
           $and: [
             {
@@ -400,7 +418,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         },
       ];
     } else if (assignedUser === "no_one") {
-      // ✅ Nếu chọn "no_one" → chỉ lấy hóa đơn chưa giao (bỏ điều kiện tỉnh nếu bạn không muốn lọc theo tỉnh)
+      // Nếu chọn "no_one" → chỉ lấy hóa đơn chưa giao (bỏ điều kiện tỉnh nếu bạn không muốn lọc theo tỉnh)
       match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
     } else {
       // Nếu không truyền hoặc chọn "all" → lấy TẤT CẢ kể cả chưa giao
@@ -483,55 +501,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     // Pipeline aggregate
-    const pipeline: any[] = [
-      { $match: match }, // dùng object match mới
-      {
-        $addFields: {
-          totalAmountNum: {
-            $cond: [
-              {
-                $or: [
-                  { $eq: ["$totalAmount", "Không nợ cước"] },
-                  { $eq: ["$totalAmount", null] },
-                  { $eq: ["$totalAmount", ""] },
-                ],
-              },
-              0,
-              {
-                $toDouble: {
-                  $replaceAll: {
-                    input: "$totalAmount",
-                    find: ",",
-                    replacement: "",
-                  },
-                },
-              },
-            ],
-          },
-        },
-      },
-      {
-        $addFields: {
-          priority: {
-            $cond: [
-              {
-                $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-      },
-      { $sort: sortStage },
-      { $skip: skip },
-      { $limit: limit },
-    ];
-
-    const result = await Invoice.aggregate(pipeline);
-
-    const summaryAgg = [
+    const result = await Invoice.aggregate([
+      // A. Lọc dữ liệu đầu vào
       { $match: match },
+
+      // B. Tính toán các trường số học (Làm 1 lần duy nhất cho cả sort và sum)
       {
         $addFields: {
           totalAmountNum: {
@@ -554,72 +528,85 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         },
       },
       {
+        $addFields: {
+          priority: {
+            $cond: [{ $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }] }, 1, 0],
+          },
+        },
+      },
+
+      // C. FACET: Chia luồng xử lý song song
+      {
         $facet: {
-          // ✅ Nhóm hóa đơn đã có người nhận
-          assigned: [
+          // Luồng 1: Lấy danh sách hiển thị (Data + Pagination)
+          data: [
+            { $sort: sortStage },
+            { $skip: skip },
+            { $limit: limit },
+            // Thay thế Invoice.populate bằng $lookup trực tiếp
             {
-              $match: {
-                $and: [{ assignedTo: { $ne: null } }, { assignedTo: { $ne: "" } }],
+              $lookup: {
+                from: "users", // Tên collection trong DB (thường là 'users' số nhiều)
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "assignedInfo",
+                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
               },
             },
-            {
-              $group: {
-                _id: null,
-                totalInvoices: { $sum: 1 },
-                sumTotalAmount: { $sum: "$totalAmountNum" },
-              },
-            },
+            // Unwind để biến mảng assignedInfo thành object (nếu có)
+            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+            // Gán ngược lại vào assignedTo để giống format cũ
+            { $addFields: { assignedTo: "$assignedInfo" } },
+            { $project: { assignedInfo: 0 } }, // Xóa field thừa
           ],
-          // ✅ Nhóm hóa đơn chưa giao (rỗng, null, chưa có field)
-          unassigned: [
-            {
-              $match: {
-                $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
-              },
-            },
+
+          // Luồng 2: Tính tổng hợp (Summary)
+          summary: [
             {
               $group: {
                 _id: null,
-                totalInvoices: { $sum: 1 },
-                sumTotalAmount: { $sum: "$totalAmountNum" },
+                totalInvoices: { $sum: 1 }, // Tổng số hóa đơn
+                sumTotalAmount: { $sum: "$totalAmountNum" }, // Tổng tiền
+                // Đếm số lượng chưa giao (unassigned)
+                unassignedCount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ["$assignedTo", null] },
+                          { $eq: ["$assignedTo", ""] },
+                          { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
               },
             },
           ],
         },
       },
-    ];
+    ]);
 
-    const summaryResult = await Invoice.aggregate(summaryAgg);
-
-    const assignedSummary = summaryResult[0]?.assigned?.[0] || {};
-    const unassignedSummary = summaryResult[0]?.unassigned?.[0] || {};
-
-    // ✅ Tính toán từng giá trị với (|| 0)
-    const assignedCount = assignedSummary.totalInvoices || 0;
-    const unassignedCount = unassignedSummary.totalInvoices || 0; // Giống code cũ của bạn
-
-    const assignedAmount = assignedSummary.sumTotalAmount || 0;
-    const unassignedAmount = unassignedSummary.sumTotalAmount || 0;
-    // ✅ Cộng các giá trị đã được đảm bảo là số
-    const totalInvoices = assignedCount + unassignedCount;
-    const sumTotalAmount = assignedAmount + unassignedAmount;
-
-    // ✅ Populate thủ công
-    await Invoice.populate(result, { path: "assignedTo", select: "fullName email phone collectionFee" });
+    const facetResult = result[0];
+    const data = facetResult.data;
+    const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0, unassignedCount: 0 };
 
     // ✅ Trả kết quả
     res.status(200).json({
       success: true,
-      data: result,
+      data: data,
       summary: {
-        totalInvoices: totalInvoices,
-        totalAmount: sumTotalAmount,
-        unassignedInvoices: unassignedCount,
+        totalInvoices: summaryData.totalInvoices,
+        totalAmount: summaryData.sumTotalAmount,
+        unassignedInvoices: summaryData.unassignedCount,
       },
       pagination: {
         currentPage: page,
         invoicesPerPage: limit,
-        totalPages: Math.ceil(totalInvoices / limit),
+        totalPages: Math.ceil(summaryData.totalInvoices / limit),
       },
     });
   } catch (error) {
@@ -653,36 +640,59 @@ const addTotalAmountNumField = {
     },
   },
 };
+
 export const fetchTop20HighestInvoices = async (req: Request, res: Response) => {
   try {
     const userId = req.user?._id;
     const userRole = req.user?.role;
     const { collectionStatus } = req.query;
-    const limit = 20; // Luôn lấy 20 hóa đơn
+    const limit = 20;
 
     const match: any = {};
-
     if (userRole !== "admin" && userId) {
       match.assignedTo = new mongoose.Types.ObjectId(userId as string);
     }
-
     if (collectionStatus) {
       match.collectionStatus = collectionStatus;
     }
 
-    const pipeline: any[] = [
+    // Chỉ lấy những thằng có totalAmount và khác rỗng để đỡ lỗi convert
+    match.totalAmount = { $exists: true, $ne: "" };
+
+    match.isPaid = false;
+
+    const result = await Invoice.aggregate([
       { $match: match },
-      addTotalAmountNumField,
-      { $sort: { totalAmountNum: -1 } },
+      // Convert String -> Number (Vẫn phải làm bước này nếu DB chưa sửa)
+      {
+        $addFields: {
+          realAmount: {
+            $cond: [
+              { $regexMatch: { input: "$totalAmount", regex: /^[0-9,.]+$/ } }, // Kiểm tra an toàn
+              { $toDouble: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } } },
+              0,
+            ],
+          },
+        },
+      },
+      // Sort trên số thực
+      { $sort: { realAmount: -1 } },
       { $limit: limit },
-    ];
+      // Lookup thay vì populate
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignedTo",
+          foreignField: "_id",
+          as: "assignedToInfo",
+          pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+        },
+      },
+      { $unwind: { path: "$assignedToInfo", preserveNullAndEmptyArrays: true } },
+      { $addFields: { assignedTo: "$assignedToInfo" } },
+      { $project: { assignedToInfo: 0, realAmount: 0 } }, // Xóa field tạm
+    ]);
 
-    const result = await Invoice.aggregate(pipeline);
-
-    // ✅ Populate thủ công (Giữ lại logic populate)
-    await Invoice.populate(result, { path: "assignedTo", select: "fullName email phone collectionFee" });
-
-    // ✅ Trả kết quả
     res.status(200).json({
       success: true,
       message: `Đã lấy thành công ${result.length} hóa đơn nợ cước cao nhất.`,
@@ -733,52 +743,88 @@ export const searchInvoice = async (req: Request, res: Response) => {
         },
       ];
     }
+
     if (req.user?.role !== "admin") {
       match.isPaid = { $ne: true };
     }
-    if (searchType && searchType === "station") {
-      match.recordBookCode = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
-    } else if (searchType && searchType === "customer") {
-      match.invoiceNumber = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
-    } else if (searchType && searchType === "customerName") {
-      match.customerName = { $regex: new RegExp(searchInvoiceNumber as string, "i") };
+
+    if (searchInvoiceNumber) {
+      const regex = new RegExp(searchInvoiceNumber as string, "i");
+      if (searchType === "station") {
+        match.recordBookCode = { $regex: regex };
+      } else if (searchType === "customer") {
+        match.invoiceNumber = { $regex: regex };
+      } else if (searchType === "customerName") {
+        match.customerName = { $regex: regex };
+      }
     }
 
-    // 2. Thực thi song song 3 truy vấn để tối ưu tốc độ
-    const [invoices, totalCount, totalAmountResult] = await Promise.all([
-      // Query 1: Lấy danh sách phân trang (Data)
-      Invoice.find(match)
-        .populate("assignedTo", "fullName email phone collectionFee")
-        .collation({ locale: "en_US", numericOrdering: true })
-        .sort({ totalAmount: -1, _id: -1 })
-        .skip(skip)
-        .limit(limitNumber),
+    const result = await Invoice.aggregate([
+      // Bước 1: Lọc dữ liệu
+      { $match: match },
 
-      // Query 2: Đếm tổng số bản ghi (Count)
-      Invoice.countDocuments(match),
-
-      // Query 3: Tính tổng tiền toàn bộ kết quả tìm thấy (Sum)
-      Invoice.aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: { $toDouble: "$totalAmount" } },
+      // Bước 2: Tạo field số để Sort và tính tổng cho chính xác
+      {
+        $addFields: {
+          amountVal: {
+            $cond: [
+              // Kiểm tra xem có phải dạng số không (để tránh lỗi crash)
+              { $regexMatch: { input: "$totalAmount", regex: /^[0-9,.]+$/ } },
+              { $toDouble: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } } },
+              0,
+            ],
           },
         },
-      ]),
+      },
+
+      // Bước 3: Facet - Chia luồng
+      {
+        $facet: {
+          // Luồng A: Lấy data chi tiết (Data)
+          data: [
+            { $sort: { amountVal: -1, _id: -1 } }, // Sort theo tiền giảm dần
+            { $skip: skip },
+            { $limit: limitNumber },
+            // Lookup User
+            {
+              $lookup: {
+                from: "users",
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "assignedInfo",
+                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+              },
+            },
+            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+            { $addFields: { assignedTo: "$assignedInfo" } },
+            { $project: { assignedInfo: 0, amountVal: 0 } }, // Xóa field tạm
+          ],
+
+          // Luồng B: Thống kê tổng (Count & Sum)
+          meta: [
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                totalAmount: { $sum: "$amountVal" },
+              },
+            },
+          ],
+        },
+      },
     ]);
 
-    const totalRevenue = totalAmountResult.length > 0 ? totalAmountResult[0].total : 0;
+    const data = result[0].data;
+    const meta = result[0].meta[0] || { count: 0, totalAmount: 0 };
 
     // 3. Trả về kết quả
     res.status(200).json({
       success: true,
-      data: invoices,
-      count: invoices.length,
-      total: totalCount,
-      totalAmount: totalRevenue,
-      totalPages: Math.ceil(totalCount / limitNumber),
+      data: data,
+      count: data.length,
+      total: meta.count,
+      totalAmount: meta.totalAmount,
+      totalPages: Math.ceil(meta.count / limitNumber),
       currentPage: pageNumber,
     });
   } catch (error) {
@@ -846,39 +892,67 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
     // else if (assignedUserId) { match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string); }
 
     // 4. Thực thi song song 3 truy vấn (Data, Count, Sum Amount)
-    const [invoices, totalCount, totalAmountResult] = await Promise.all([
-      // Query 1: Lấy danh sách phân trang
-      Invoice.find(match)
-        .populate("assignedTo", "fullName email phone collectionFee")
-        .sort({ collectionDate: -1, _id: -1 }) // Giữ nguyên sort theo ngày thu
-        .skip(skip)
-        .limit(limitNumber),
+    const result = await Invoice.aggregate([
+      // Bước 1: Lọc dữ liệu
+      { $match: match },
 
-      // Query 2: Đếm tổng số bản ghi
-      Invoice.countDocuments(match),
+      // Bước 2: Facet - Chia luồng xử lý
+      {
+        $facet: {
+          // Luồng A: Lấy data (Data)
+          data: [
+            { $sort: { collectionDate: -1, _id: -1 } },
+            { $skip: skip },
+            { $limit: limitNumber },
+            // Lookup user trực tiếp
+            {
+              $lookup: {
+                from: "users",
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "assignedInfo",
+                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+              },
+            },
+            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+            { $addFields: { assignedTo: "$assignedInfo" } },
+            { $project: { assignedInfo: 0 } },
+          ],
 
-      // Query 3: Tính tổng tiền
-      Invoice.aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: { $toDouble: "$totalAmount" } }, // Chuyển string sang double để cộng
-          },
+          // Luồng B: Thống kê (Meta)
+          meta: [
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                // Tính tổng tiền (Convert string -> number tại chỗ)
+                totalAmount: {
+                  $sum: {
+                    $cond: [
+                      { $regexMatch: { input: "$totalAmount", regex: /^[0-9,.]+$/ } },
+                      { $toDouble: { $replaceAll: { input: "$totalAmount", find: ",", replacement: "" } } },
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
         },
-      ]),
+      },
     ]);
 
-    const totalRevenue = totalAmountResult.length > 0 ? totalAmountResult[0].total : 0;
+    const data = result[0].data;
+    const meta = result[0].meta[0] || { count: 0, totalAmount: 0 };
 
     // 5. Trả về kết quả đúng định dạng yêu cầu
     res.status(200).json({
       success: true,
-      data: invoices,
-      count: invoices.length, // Số bản ghi của trang hiện tại
-      total: totalCount, // Tổng số bản ghi tìm thấy trong DB
-      totalAmount: totalRevenue, // Tổng tiền
-      totalPages: Math.ceil(totalCount / limitNumber),
+      data: data,
+      count: data.length, // Số bản ghi của trang hiện tại
+      total: meta.count, // Tổng số bản ghi tìm thấy trong DB
+      totalAmount: meta.totalAmount, // Tổng tiền
+      totalPages: Math.ceil(meta.count / limitNumber),
       currentPage: pageNumber,
     });
   } catch (error) {
@@ -944,13 +1018,12 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
           },
         },
       },
-      // ---> Sau bước này, từ 17.000 dòng, ta chỉ còn tối đa 8 dòng (8 users) <---
 
-      // 3. LOOKUP: Bây giờ mới đi tìm thông tin User (chỉ tốn 8 thao tác)
+      // 3. LOOKUP: Bây giờ mới đi tìm thông tin User
       {
         $lookup: {
           from: "users",
-          localField: "_id", // _id của group chính là assignedTo cũ
+          localField: "_id", // _id của group chính là assignedTo cũ (trường _id đã được gom nhóm phía trên)
           foreignField: "_id",
           as: "userInfo",
           pipeline: [
