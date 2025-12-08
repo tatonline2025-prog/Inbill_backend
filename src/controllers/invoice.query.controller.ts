@@ -897,46 +897,33 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
   try {
     const matchStage: any = {};
 
-    // ✅ Nếu có userId → chỉ lấy hóa đơn của người đó
     if (userId && typeof userId === "string" && mongoose.Types.ObjectId.isValid(userId)) {
       matchStage.assignedTo = new mongoose.Types.ObjectId(userId);
     }
 
     // Dùng aggregate để tính tổng hợp
     const result = await Invoice.aggregate([
+      // 1. MATCH: Lọc bớt dữ liệu nếu cần (ví dụ chỉ lấy của 1 user)
+      // Nếu không có userId, bước này sẽ pass qua 17k dòng xuống dưới
       ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
 
-      {
-        $lookup: {
-          from: "users",
-          let: { userId: "$assignedTo" },
-          pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
-            {
-              $project: {
-                password: 0, // loại password nếu tên field là "password"
-                pass: 0, // hoặc "pass" nếu bạn có field đó
-                __v: 0, // bỏ __v nếu muốn
-              },
-            },
-          ],
-          as: "assignedTo",
-        },
-      },
-      { $unwind: { path: "$assignedTo", preserveNullAndEmptyArrays: true } },
+      // 2. GROUP (QUAN TRỌNG NHẤT): Xử lý 17k dòng tại đây
       {
         $group: {
-          _id: {
-            assignedTo: "$assignedTo._id",
-          },
+          _id: "$assignedTo", // Gom nhóm theo ID nhân viên
+
+          // Vì chỉ có 1 tháng nên ta lấy luôn giá trị đầu tiên tìm thấy làm đại diện
           billing_period: { $first: "$billing_period" },
-          assignedTo: { $first: "$assignedTo" },
+
+          // Đếm số lượng
           collectedCount: {
             $sum: { $cond: [{ $eq: ["$collectionStatus", "collected"] }, 1, 0] },
           },
           notCollectedCount: {
             $sum: { $cond: [{ $eq: ["$collectionStatus", "not_collected"] }, 1, 0] },
           },
+
+          // Tính tổng tiền (Vẫn giữ convert nếu DB chưa sửa, nhưng gom trước nên nhanh hơn)
           collectedTotal: {
             $sum: {
               $cond: [
@@ -957,9 +944,35 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
           },
         },
       },
+      // ---> Sau bước này, từ 17.000 dòng, ta chỉ còn tối đa 8 dòng (8 users) <---
+
+      // 3. LOOKUP: Bây giờ mới đi tìm thông tin User (chỉ tốn 8 thao tác)
       {
-        // ✅ Sắp xếp cho dễ nhìn: theo kỳ mới nhất
-        $sort: { billing_period: -1 },
+        $lookup: {
+          from: "users",
+          localField: "_id", // _id của group chính là assignedTo cũ
+          foreignField: "_id",
+          as: "userInfo",
+          pipeline: [
+            { $project: { password: 0, pass: 0, __v: 0 } }, // Chỉ lấy thông tin cần thiết
+          ],
+        },
+      },
+
+      // 4. UNWIND: Trải phẳng mảng userInfo (vì lookup luôn trả về mảng)
+      { $unwind: { path: "$userInfo", preserveNullAndEmptyArrays: true } },
+
+      // 5. PROJECT: Trình bày lại dữ liệu trả về cho Client
+      {
+        $project: {
+          _id: 0, // Ẩn cái ID lằng nhằng đi
+          assignedTo: "$userInfo", // Trả về object user đầy đủ
+          billing_period: 1,
+          collectedCount: 1,
+          notCollectedCount: 1,
+          collectedTotal: 1,
+          notCollectedTotal: 1,
+        },
       },
     ]);
 
