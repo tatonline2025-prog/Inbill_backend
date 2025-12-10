@@ -2,12 +2,13 @@ import { Request, Response } from "express";
 
 // --- Hằng số cấu hình ---
 const K_MAX = 9; // Số lượng số hạng tối đa cho phép
-const MAX_RESULTS_LIMIT = 5; // Số lượng tổ hợp tối đa cần tìm
-const TARGET_SLACK = 200000; // Khoảng lỗi mặc định (200k)
+const MAX_RESULTS_LIMIT = 10; // Số lượng tổ hợp tối đa cần tìm
+const TARGET_SLACK = 10000; // Khoảng lỗi mặc định (10k)
 const MAX_EXECUTION_TIME_MS = 60000;
 
 interface Item {
   id: number;
+  mkh: string;
   val: number;
 }
 
@@ -109,15 +110,32 @@ export const findOptimalSum = async (req: Request, res: Response) => {
     const maxCount = Math.min(+count, K_MAX);
     const targetMax = +maxTarget;
 
-    let targetMin = +minTarget || targetMax - TARGET_SLACK;
+    let targetMin = +minTarget || 0;
     if (targetMin < 0) targetMin = 0;
 
     // Chuẩn bị dữ liệu
     let availableItems: Item[] = moneyList
-      .map((v: any, index: number) => ({ id: index, val: +v }))
-      .filter((x) => !isNaN(x.val) && x.val > 0 && x.val <= targetMax)
-      .sort((a, b) => b.val - a.val); // Sắp xếp giảm dần để CẮT TỈA hiệu quả hơn
+      .map((item: any, index: number) => {
+        // Trường hợp 1: Item là object từ Frontend gửi lên (có moneyVal và originalIndex)
+        if (typeof item === "object" && item !== null && "moneyVal" in item) {
+          return {
+            id: item.originalIndex, // QUAN TRỌNG: Dùng originalIndex để sau này map về đúng MKH
+            mkh: item.mkh, // QUAN TRỌNG: Dùng originalIndex để sau này map về đúng MKH
+            val: +item.moneyVal,
+          };
+        }
 
+        // Trường hợp 2: Item chỉ là số bình thường (fallback cho code cũ)
+        return {
+          id: index,
+          mkh: "undefined",
+          val: +item,
+        };
+      })
+      // 3. Lọc dữ liệu rác
+      .filter((x) => !isNaN(x.val) && x.val > 0 && x.val <= targetMax)
+      // 4. Sắp xếp giảm dần để cắt tỉa nhanh hơn
+      .sort((a, b) => b.val - a.val);
     const finalResults: Combo[] = [];
 
     // Vòng lặp Tìm kiếm Lặp tham lam (Greedy Iterative Search)
@@ -137,13 +155,6 @@ export const findOptimalSum = async (req: Request, res: Response) => {
         // Xóa các phần tử đã dùng khỏi danh sách CÒN LẠI
         const usedIds = new Set(bestCombo.items.map((item) => item.id));
         availableItems = availableItems.filter((item) => !usedIds.has(item.id));
-
-        // Log: Có thể thêm log tại đây để xem danh sách đã giảm đi như thế nào
-        // console.log(
-        //   `Tìm được Combo #${i + 1} (K=${bestCombo.count}, Sum=${bestCombo.sum}). Số mục còn lại: ${
-        //     availableItems.length
-        //   }`
-        // );
       } else {
         // Không tìm thấy thêm tổ hợp nào phù hợp từ danh sách còn lại
         break;
@@ -160,6 +171,7 @@ export const findOptimalSum = async (req: Request, res: Response) => {
           count: r.count,
           subset: r.items.map((i) => i.val),
           indices: r.items.map((i) => i.id),
+          invoicenumbers: r.items.map((i) => i.mkh),
         })),
       });
     }
