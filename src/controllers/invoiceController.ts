@@ -84,7 +84,6 @@ export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => 
 
 export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
   try {
-    // 1. Lấy danh sách invoiceNumbers từ body (do client gửi lên)
     const { invoiceNumbers } = req.body.data;
 
     // Kiểm tra dữ liệu đầu vào
@@ -92,24 +91,26 @@ export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Danh sách hóa đơn không hợp lệ" });
     }
 
-    // 2. Thực hiện update hàng loạt (Bulk Update)
-    // Dùng updateMany sẽ nhanh hơn rất nhiều so với dùng vòng lặp for
-    const result = await Invoice.updateMany(
-      {
-        invoiceNumber: { $in: invoiceNumbers }, // Tìm những hóa đơn có mã nằm trong danh sách
-      },
-      [
-        {
-          $set: {
-            isPaid: true,
-          },
-        },
-      ]
-    );
+    const filterCriteria = {
+      invoiceNumber: { $in: invoiceNumbers },
 
-    // 3. Phản hồi kết quả
+      isPaid: { $ne: true },
+
+      collectionStatus: { $ne: "collected" },
+    };
+
+    const updateOperation = [
+      {
+        $set: {
+          isPaid: true,
+        },
+      },
+    ];
+
+    const result = await Invoice.updateMany(filterCriteria, updateOperation);
+
     if (result.matchedCount === 0) {
-      return res.status(404).json({ message: "Không tìm thấy hóa đơn nào trong danh sách cung cấp." });
+      return res.status(404).json({ message: "Các hoá đơn trong danh sách là đã thu hoặc không có trong dữ liệu" });
     }
 
     res.status(200).json({

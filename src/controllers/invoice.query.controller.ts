@@ -1080,3 +1080,46 @@ export const getLatestBillingPeriod = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Lỗi server" });
   }
 };
+
+export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
+  try {
+    const { filterPrint, filterCollection, filterAssignedUser, isPaidFilter, selectedProvince } = req.query;
+
+    // console.log(filterPrint, filterCollection, filterAssignedUser, isPaidFilter, selectedProvince);
+
+    const match: any = {};
+
+    if (isPaidFilter === "true") {
+      match.isPaid = true;
+    } else {
+      match.isPaid = { $ne: true };
+    }
+
+    if (filterPrint && filterPrint !== "all") {
+      match.printStatus = filterPrint === "not_printed" ? { $ne: "printed" } : filterPrint;
+    }
+
+    if (filterCollection && filterCollection !== "all") {
+      match.collectionStatus = filterCollection;
+    }
+
+    if (selectedProvince && selectedProvince !== "all") {
+      match.province = selectedProvince;
+    }
+
+    if (filterAssignedUser && filterAssignedUser !== "all") {
+      if (filterAssignedUser === "no_one") {
+        match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+      } else {
+        match.assignedTo = filterAssignedUser;
+      }
+    }
+
+    const result = await Invoice.find(match).select("invoiceNumber -_id").lean();
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("fetchAllInvoicesForCopy Error:", error);
+    res.status(500).json({ message: "Lỗi server khi lấy danh sách copy" });
+  }
+};

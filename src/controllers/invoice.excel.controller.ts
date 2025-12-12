@@ -372,59 +372,150 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
  */
 export const exportExcelCollected = async (req: Request, res: Response) => {
   try {
-    const { date, assignedUserId } = req.query;
-    const dateParam = date as string | undefined;
+    // 1. Lấy tham số từ Query String
+    const { fromDate, toDate, isClosed, status, userIds } = req.query;
 
-    if (!dateParam || isNaN(new Date(dateParam).getTime())) {
-      return res.status(400).json({ message: "Tham số 'date' không hợp lệ." });
+    // console.log("Params:", { fromDate, toDate, isClosed, status, userIds });
+
+    // 2. Validate ngày tháng
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ message: "Vui lòng chọn khoảng thời gian (Từ ngày - Đến ngày)." });
     }
 
-    const startOfDay = dayjs.tz(dateParam, "Asia/Ho_Chi_Minh").startOf("day").toDate();
-    const endOfDay = dayjs.tz(dateParam, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+    // Xử lý Timezone Việt Nam: Đầu ngày (00:00:00) và Cuối ngày (23:59:59)
+    const startOfDay = dayjs
+      .tz(fromDate as string, "Asia/Ho_Chi_Minh")
+      .startOf("day")
+      .toDate();
+    const endOfDay = dayjs
+      .tz(toDate as string, "Asia/Ho_Chi_Minh")
+      .endOf("day")
+      .toDate();
 
-    const match: any = {
-      collectionStatus: "collected",
-      collectionDate: { $gte: startOfDay, $lte: endOfDay },
-    };
+    // 3. Khởi tạo điều kiện lọc (Match Query)
+    const match: any = {};
 
-    // Thêm điều kiện lọc theo nhân viên nếu có
-    if (assignedUserId && assignedUserId !== "all") {
-      match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
+    // --- Xử lý Date & Status ---
+    // Logic:
+    // - Nếu chọn "Đã thu" (paid) -> Lọc theo ngày thu (collectionDate).
+    // - Nếu chọn "Chưa thu" hoặc "Tất cả" -> Lọc theo ngày tạo hóa đơn (createdAt) để không bị sót đơn.
+
+    if (status === "paid") {
+      match.collectionStatus = "collected";
+      match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    } else if (status === "unpaid") {
+      match.collectionStatus = "not_collected";
+      match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
+    } else {
+      // status === 'all'
+      // Khi chọn tất cả, ta lọc theo ngày tạo để lấy trọn vẹn danh sách trong khoảng thời gian đó
+      match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    const invoices: IInvoice[] = await Invoice.find(match).populate("assignedTo", "fullName email phone").lean();
+    // --- Xử lý User (Nhiều người) ---
+    // userIds dạng string: "id1,id2,id3"
+    if (userIds && typeof userIds === "string" && userIds.trim() !== "") {
+      const idsArray = userIds.split(",").map((id) => new mongoose.Types.ObjectId(id.trim()));
+      match.assignedTo = { $in: idsArray };
+    }
+
+    // --- Xử lý IsClosed (Trạng thái đóng cước) ---
+    if (isClosed && isClosed !== "all") {
+      // Giả sử trong DB field là isPaid (boolean)
+      match.isPaid = isClosed === "true";
+    }
+
+    // 4. Truy vấn Database
+    // populate assignedTo để lấy tên nhân viên
+    const invoices: any[] = await Invoice.find(match)
+      .populate("assignedTo", "fullName email phone")
+      .sort({ updatedAt: -1 }) // Sắp xếp mới nhất trước
+      .lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
+      return res.status(404).json({ message: "Không tìm thấy dữ liệu hóa đơn nào với bộ lọc này." });
     }
 
-    const dataForExcel = invoices.map((invoice, index) => ({
-      STT: index + 1,
-      "Mã khách hàng": invoice.invoiceNumber || "",
-      "Kỳ này": invoice.currentAmount ?? "",
-      "Kỳ trước": invoice.previousAmount ?? "",
-      "Tổng tiền": invoice.totalAmount ?? "",
-      Tên: invoice.customerName || "",
-      "Địa chỉ": invoice.customerAddress || "",
-      Trạm: invoice.recordBookCode,
-    }));
+    // 5. Map dữ liệu sang format Excel
+    const dataForExcel = invoices.map((invoice, index) => {
+      // Xác định trạng thái hiển thị
+      const statusText = invoice.collectionStatus === "collected" ? "Đã thu" : "Chưa thu";
+      // const closedText = invoice.isPaid ? "Đã đóng cước" : "Chưa đóng cước";
+      // const collectionDateStr = invoice.collectionDate
+      //   ? dayjs(invoice.collectionDate).tz("Asia/Ho_Chi_Minh").format("DD/MM/YYYY HH:mm")
+      //   : "";
 
+      return {
+        STT: index + 1,
+        "Mã khách hàng": invoice.invoiceNumber || "",
+        "Kỳ này": invoice.currentAmount ?? "",
+        "Kỳ trước": invoice.previousAmount ?? "",
+        "Tổng tiền": invoice.totalAmount ?? "",
+        Tên: invoice.customerName || "",
+        "Địa chỉ": invoice.customerAddress || "",
+        Trạm: invoice.recordBookCode,
+        "Đã thu": statusText,
+        "Người phụ trách": invoice.assignedTo?.fullName || "Chưa phân công",
+      };
+    });
+
+    // 6. Tạo File Excel
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Hóa Đơn Đã Thu");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
 
-    configureColumnWidths(worksheet);
+    // Tự động chỉnh độ rộng cột (Optional)
+    const wscols = [
+      { wch: 5 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 25 },
+      { wch: 35 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 20 },
+    ];
+    worksheet["!cols"] = wscols;
 
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
 
-    // Đặt tên file động
-    const fileName = `hoa-don-da-thu-${dateParam}.xlsx`;
+    // 7. Gửi Response
+    let filePrefix = "Tong-Hop-Hoa-Don"; // Mặc định
+
+    // Logic đặt tên
+    if (status === "paid") {
+      filePrefix = "DS-Hoa-Don-Da-Thu"; // Danh sách đã thu
+    } else if (status === "unpaid") {
+      filePrefix = "DS-Chua-Thu"; // Danh sách chưa thu
+    }
+
+    // Nếu có lọc thêm đóng cước, thêm hậu tố cho rõ
+    if (isClosed === "true") {
+      filePrefix += "-Da-Dong-Cuoc";
+    } else if (isClosed === "false") {
+      filePrefix += "-Chua-Dong-Cuoc";
+    }
+
+    // Format lại ngày cho gọn (Giả sử input là YYYY-MM-DD)
+    // Ví dụ: 2025-12-08 -> 08-12
+    const formatSimpleDate = (dateStr: any) => {
+      if (!dateStr) return "";
+      const parts = dateStr.split("-"); // [2025, 12, 08]
+      if (parts.length === 3) return `${parts[2]}-${parts[1]}`; // 08-12
+      return dateStr;
+    };
+
+    const from = formatSimpleDate(fromDate);
+    const to = formatSimpleDate(toDate);
+
+    // Kết quả: "DS-Da-Thu_08-12_den_11-12.xlsx"
+    const fileName = `${filePrefix}_${from}_den_${to}.xlsx`;
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(fileName)}"` // Mã hóa tên file
-    );
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
 
     res.send(buffer);
   } catch (error) {
