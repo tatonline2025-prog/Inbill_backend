@@ -158,7 +158,7 @@ export const findOptimalSum = async (req: Request, res: Response) => {
     if (finalResults.length > 0) {
       return res.status(200).json({
         success: true,
-        message: `Tìm được ${finalResults.length} tổ hợp.`,
+        message: `${finalResults.length} tổ hợp tốt nhất.`,
         results: finalResults.map((r) => ({
           sum: r.sum,
           count: r.count,

@@ -565,9 +565,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
             {
               $group: {
                 _id: null,
-                totalInvoices: { $sum: 1 }, // Tổng số hóa đơn
-                sumTotalAmount: { $sum: "$totalAmountNum" }, // Tổng tiền
-                // Đếm số lượng chưa giao (unassigned)
+                totalInvoices: { $sum: 1 },
+                sumTotalAmount: { $sum: "$totalAmountNum" },
                 unassignedCount: {
                   $sum: {
                     $cond: [
@@ -592,7 +591,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
 
     const facetResult = result[0];
     const data = facetResult.data;
-    const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0, unassignedCount: 0 };
+    const summaryData = facetResult.summary[0] || {
+      totalInvoices: 0,
+      sumTotalAmount: 0,
+      unassignedCount: 0,
+    };
 
     // ✅ Trả kết quả
     res.status(200).json({
@@ -977,43 +980,60 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
 
     // Dùng aggregate để tính tổng hợp
     const result = await Invoice.aggregate([
-      // 1. MATCH: Lọc bớt dữ liệu nếu cần (ví dụ chỉ lấy của 1 user)
-      // Nếu không có userId, bước này sẽ pass qua 17k dòng xuống dưới
       ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
 
       // 2. GROUP (QUAN TRỌNG NHẤT): Xử lý 17k dòng tại đây
       {
         $group: {
-          _id: "$assignedTo", // Gom nhóm theo ID nhân viên
-
-          // Vì chỉ có 1 tháng nên ta lấy luôn giá trị đầu tiên tìm thấy làm đại diện
+          _id: "$assignedTo",
           billing_period: { $first: "$billing_period" },
 
-          // Đếm số lượng
-          collectedCount: {
-            $sum: { $cond: [{ $eq: ["$collectionStatus", "collected"] }, 1, 0] },
-          },
-          notCollectedCount: {
-            $sum: { $cond: [{ $eq: ["$collectionStatus", "not_collected"] }, 1, 0] },
-          },
-
-          // Tính tổng tiền (Vẫn giữ convert nếu DB chưa sửa, nhưng gom trước nên nhanh hơn)
-          collectedTotal: {
+          paidTotal: {
             $sum: {
               $cond: [
-                { $eq: ["$collectionStatus", "collected"] },
+                { $eq: ["$isPaid", true] },
                 { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } },
                 0,
               ],
             },
           },
-          notCollectedTotal: {
+
+          collectedTotal: {
             $sum: {
               $cond: [
-                { $eq: ["$collectionStatus", "not_collected"] },
+                {
+                  $and: [
+                    { $eq: ["$collectionStatus", "collected"] },
+                    { $ne: ["$isPaid", true] }, // Quan trọng: Chưa đóng cước mới tính là đang giữ
+                  ],
+                },
                 { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } },
                 0,
               ],
+            },
+          },
+
+          notCollectedTotal: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $ne: ["$isPaid", true] }],
+                },
+                { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } },
+                0,
+              ],
+            },
+          },
+
+          paidCount: { $sum: { $cond: [{ $eq: ["$isPaid", true] }, 1, 0] } },
+          collectedCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ["$collectionStatus", "collected"] }, { $ne: ["$isPaid", true] }] }, 1, 0],
+            },
+          },
+          notCollectedCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $ne: ["$isPaid", true] }] }, 1, 0],
             },
           },
         },
@@ -1045,6 +1065,8 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
           notCollectedCount: 1,
           collectedTotal: 1,
           notCollectedTotal: 1,
+          paidTotal: 1,
+          paidCount: 1,
         },
       },
     ]);
