@@ -235,9 +235,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
     invoice.customerName = customerName;
     invoice.customerPhone = customerPhone || "";
     invoice.customerAddress = customerAddress || "";
-    invoice.currentAmount = currentAmount;
-    invoice.previousAmount = previousAmount;
-    invoice.totalAmount = String(Number(currentAmount) + Number(previousAmount));
+    invoice.currentAmount = normalizeMoneyString(currentAmount);
+    invoice.previousAmount = normalizeMoneyString(previousAmount);
+    invoice.totalAmount = String(
+      Number(normalizeMoneyString(currentAmount)) + Number(normalizeMoneyString(previousAmount))
+    );
     invoice.assignedTo = finalAssignedTo;
     invoice.billing_period = billing_period;
     invoice.note = note !== undefined ? note : invoice.note;

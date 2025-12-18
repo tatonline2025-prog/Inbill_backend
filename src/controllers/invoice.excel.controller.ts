@@ -22,6 +22,23 @@ const columnMapping = {
 };
 
 /**
+ * Hàm làm sạch chuỗi số từ Excel
+ */
+const cleanNumberString = (value: any): string => {
+  if (value === null || value === undefined || value === "") return "0";
+
+  let str = String(value).trim();
+
+  const isNegative = str.startsWith("-");
+
+  str = str.replace(/[.,]/g, "");
+
+  str = str.replace(/[^0-9]/g, "");
+
+  return isNegative ? `-${str}` : str;
+};
+
+/**
  * Nhập và cập nhật/thêm mới hóa đơn từ Excel (dành cho người dùng/người thu).
  * POST /api/invoices/excel-preview
  */
@@ -54,7 +71,14 @@ export const previewExcel = async (req: Request, res: Response) => {
 
         for (const excelHeader in columnMapping) {
           const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
-          newDoc[dbField] = row[excelHeader] ?? "";
+          let value = row[excelHeader] ?? "";
+
+          // Kiểm tra nếu là các cột liên quan đến số tiền thì làm sạch dữ liệu
+          if (["totalAmount", "currentAmount", "previousAmount"].includes(dbField)) {
+            newDoc[dbField] = cleanNumberString(value);
+          } else {
+            newDoc[dbField] = value;
+          }
         }
 
         if (!newDoc.invoiceNumber) return null;
@@ -120,7 +144,14 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 
         for (const excelHeader in columnMapping) {
           const dbField = columnMapping[excelHeader as keyof typeof columnMapping];
-          newDoc[dbField] = row[excelHeader] ?? "";
+          let value = row[excelHeader] ?? "";
+
+          // Kiểm tra nếu là các cột liên quan đến số tiền thì làm sạch dữ liệu
+          if (["totalAmount", "currentAmount", "previousAmount"].includes(dbField)) {
+            newDoc[dbField] = cleanNumberString(value);
+          } else {
+            newDoc[dbField] = value;
+          }
         }
 
         if (!newDoc.invoiceNumber) return null;
@@ -454,8 +485,8 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
         Tên: invoice.customerName || "",
         "Địa chỉ": invoice.customerAddress || "",
         Trạm: invoice.recordBookCode,
-        "Đã thu": statusText,
         "Người phụ trách": invoice.assignedTo?.fullName || "Chưa phân công",
+        "Đã thu": statusText,
       };
     });
 
@@ -474,8 +505,8 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       { wch: 25 },
       { wch: 35 },
       { wch: 10 },
-      { wch: 10 },
       { wch: 20 },
+      { wch: 10 },
     ];
     worksheet["!cols"] = wscols;
 
