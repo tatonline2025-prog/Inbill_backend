@@ -616,8 +616,6 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       unassignedCount: 0,
     };
 
-    console.log(facetResult);
-
     // ✅ Trả kết quả
     res.status(200).json({
       success: true,
