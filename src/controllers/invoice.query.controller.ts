@@ -509,24 +509,43 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       {
         $addFields: {
           totalAmountNum: {
-            $cond: [
-              {
-                $or: [
-                  { $eq: ["$totalAmount", "Không nợ cước"] },
-                  { $eq: ["$totalAmount", null] },
-                  { $eq: ["$totalAmount", ""] },
-                ],
-              },
-              0,
-              {
-                $toDouble: {
-                  $replaceAll: { input: "$totalAmount", find: ",", replacement: "" },
+            $let: {
+              vars: {
+                cleaned: {
+                  $trim: {
+                    input: {
+                      $replaceAll: {
+                        input: {
+                          $toString: { $ifNull: ["$totalAmount", "0"] },
+                        },
+                        find: ",",
+                        replacement: "",
+                      },
+                    },
+                  },
                 },
               },
-            ],
+              in: {
+                $cond: [
+                  {
+                    $or: [{ $eq: ["$$cleaned", ""] }, { $regexMatch: { input: "$$cleaned", regex: /^[^\d.-]+$/ } }],
+                  },
+                  0,
+                  {
+                    $convert: {
+                      input: "$$cleaned",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
+                ],
+              },
+            },
           },
         },
       },
+
       {
         $addFields: {
           priority: {
@@ -596,6 +615,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       sumTotalAmount: 0,
       unassignedCount: 0,
     };
+
+    console.log(facetResult);
 
     // ✅ Trả kết quả
     res.status(200).json({
