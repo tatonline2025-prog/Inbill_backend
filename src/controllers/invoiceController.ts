@@ -11,6 +11,22 @@ import timezone from "dayjs/plugin/timezone";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const normalizeMoneyString = (value: any): string => {
+  if (value === null || value === undefined) return "0";
+
+  if (typeof value === "number") {
+    return Math.trunc(value).toString();
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.trim().replace(/[^\d]/g, ""); // giữ lại CHỈ số
+
+    return cleaned || "0";
+  }
+
+  return "0";
+};
+
 export const toggleInvoiceStatus = async (req: Request, res: Response) => {
   try {
     const invoiceId = req.params.invoiceId;
@@ -155,6 +171,9 @@ export const createInvoice = async (req: Request, res: Response) => {
 
     const finalAssignedTo = assignedTo || req.user?._id;
 
+    const currentAmountStr = normalizeMoneyString(currentAmount);
+    const previousAmountStr = normalizeMoneyString(previousAmount);
+
     // ✅ Tạo bản ghi mới
     const newInvoice = new Invoice({
       invoiceNumber,
@@ -162,9 +181,9 @@ export const createInvoice = async (req: Request, res: Response) => {
       customerPhone,
       customerAddress,
       billing_period,
-      currentAmount,
-      previousAmount,
-      totalAmount: Number(currentAmount) + Number(previousAmount), // ✅ tính tổng
+      currentAmount: currentAmountStr,
+      previousAmount: previousAmountStr,
+      totalAmount: Number(currentAmountStr) + Number(previousAmountStr),
       recordBookCode: recordBookCode,
       assignedTo: finalAssignedTo,
       createdAt: new Date(),
