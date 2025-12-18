@@ -752,13 +752,22 @@ export const searchInvoice = async (req: Request, res: Response) => {
     }
 
     if (searchInvoiceNumber) {
-      const regex = new RegExp(searchInvoiceNumber as string, "i");
-      if (searchType === "station") {
-        match.recordBookCode = { $regex: regex };
-      } else if (searchType === "customer") {
-        match.invoiceNumber = { $regex: regex };
-      } else if (searchType === "customerName") {
-        match.customerName = { $regex: regex };
+      const searchStr = String(searchInvoiceNumber).trim(); // Chuyển thành chuỗi và xóa khoảng trắng thừa
+
+      if (searchStr.length < 5 && searchType === "customer") {
+        match._id = null;
+      } else {
+        if (searchType === "customer") {
+          match.invoiceNumber = { $regex: new RegExp(searchStr + "$", "i") };
+        } else {
+          const regex = new RegExp(searchStr, "i");
+
+          if (searchType === "station") {
+            match.recordBookCode = { $regex: regex };
+          } else if (searchType === "customerName") {
+            match.customerName = { $regex: regex };
+          }
+        }
       }
     }
 
