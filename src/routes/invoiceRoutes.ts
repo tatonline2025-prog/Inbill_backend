@@ -85,7 +85,7 @@ router.get("/exportExcelByUser", exportExcelByUser);
 router.get("/exportExcelCollected", exportExcelCollected);
 
 router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
-router.put("/update/:invoiceNumber", updateInvoice);
+router.put("/update/:invoiceNumber", authenticate, updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);
 

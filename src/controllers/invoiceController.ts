@@ -142,7 +142,6 @@ export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
 
 export const createInvoice = async (req: Request, res: Response) => {
   try {
-    // ✅ Lấy dữ liệu từ body
     const {
       invoiceNumber,
       customerName,
@@ -203,6 +202,12 @@ export const createInvoice = async (req: Request, res: Response) => {
 };
 
 export const updateInvoice = async (req: Request, res: Response) => {
+  const user = req.user;
+
+  if (!user) {
+    return res.status(401).json({ message: "Không xác định được người dùng" });
+  }
+
   try {
     const {
       customerName,
@@ -241,6 +246,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
       Number(normalizeMoneyString(currentAmount)) + Number(normalizeMoneyString(previousAmount))
     );
     invoice.assignedTo = finalAssignedTo;
+    invoice.updateBy = new mongoose.Types.ObjectId(user._id as string);
     invoice.billing_period = billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
     invoice.recordBookCode = recordBookCode;

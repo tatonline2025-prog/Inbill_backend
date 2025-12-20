@@ -42,6 +42,7 @@ const invoiceSchema = new mongoose.Schema(
 
     // 👥 Người xử lý
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    updateBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadFileId: { type: mongoose.Schema.Types.ObjectId, ref: "ExcelUpload" },
 
