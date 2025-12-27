@@ -370,10 +370,9 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       isPaid,
     } = req.query;
 
-    const page = parseInt(currentPage as string, 10);
-    const limit = parseInt(invoicesPerPage as string, 10);
+    const page = parseInt(currentPage as string, 10) || 1;
+    const limit = parseInt(invoicesPerPage as string, 10) || 20;
     const skip = (page - 1) * limit;
-    const isPaidBool = isPaid === "true";
 
     let assignedUser = assignedUserId;
     const match: any = {};
@@ -385,10 +384,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       }
 
       // Xử lý isPaid
-      if (isPaidBool) {
+      if (isPaid === "true") {
         match.isPaid = true;
-      } else {
-        match.isPaid = { $ne: true };
       }
     } else {
       match.isPaid = { $ne: true };
@@ -633,6 +630,218 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("fetchallInvoice error:", error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+export const fetchInvoicesByList = async (req: Request, res: Response) => {
+  try {
+    const {
+      printStatus,
+      collectionStatus,
+      assignedUserId,
+      province,
+      userprovince,
+      collectionDate,
+      sortField,
+      sortDirection,
+      isPaid,
+    } = req.query;
+
+    const { codes, searchType } = req.body;
+
+    const page = 1;
+    const limit = codes.length || 20;
+    const skip = (page - 1) * limit;
+
+    let assignedUser = assignedUserId;
+    const match: any = {};
+
+    if (req.user?.role === "admin") {
+      if (typeof assignedUser !== "string" || !assignedUser.trim()) {
+        assignedUser = "all";
+      }
+      if (isPaid === "true") match.isPaid = true;
+    } else {
+      match.isPaid = { $ne: true };
+    }
+
+    if (printStatus && printStatus !== "all") {
+      match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
+    }
+
+    if (collectionStatus && collectionStatus !== "all") {
+      match.collectionStatus = collectionStatus;
+    }
+
+    if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one") {
+      match.$or = [
+        { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
+        {
+          $and: [
+            { $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }] },
+            { province: userprovince },
+          ],
+        },
+      ];
+    } else if (assignedUser === "no_one") {
+      match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+    } else {
+      match.$or = [
+        { assignedTo: { $exists: true } },
+        { assignedTo: { $exists: false } },
+        { assignedTo: null },
+        { assignedTo: "" },
+      ];
+    }
+
+    if (province && province !== "all") {
+      match.province = province;
+    }
+
+    if (collectionDate && collectionStatus === "collected") {
+      const dateStr = String(collectionDate);
+      dayjs.extend(utc);
+      dayjs.extend(timezone);
+      const startOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+      const endOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+      match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    if (codes && Array.isArray(codes) && codes.length > 0) {
+      if (searchType === "stationCode") {
+        match.recordBookCode = { $in: codes };
+      } else {
+        match.invoiceNumber = { $in: codes };
+      }
+    } else {
+    }
+
+    const defaultSort: any = {
+      priority: -1,
+      totalAmountNum: -1,
+      issueDate: -1,
+      _id: 1,
+    };
+
+    let sortStage: any = {};
+    if (sortField && sortDirection && sortDirection !== "none") {
+      const direction = sortDirection === "asc" ? 1 : -1;
+      const dynamicSort: any = {};
+      dynamicSort[sortField as string] = direction;
+      sortStage = { ...dynamicSort, ...defaultSort };
+    } else {
+      sortStage = defaultSort;
+    }
+
+    const result = await Invoice.aggregate([
+      { $match: match },
+      {
+        $addFields: {
+          totalAmountNum: {
+            $let: {
+              vars: {
+                cleaned: {
+                  $trim: {
+                    input: {
+                      $replaceAll: {
+                        input: { $toString: { $ifNull: ["$totalAmount", "0"] } },
+                        find: ",",
+                        replacement: "",
+                      },
+                    },
+                  },
+                },
+              },
+              in: {
+                $cond: [
+                  { $or: [{ $eq: ["$$cleaned", ""] }, { $regexMatch: { input: "$$cleaned", regex: /^[^\d.-]+$/ } }] },
+                  0,
+                  { $convert: { input: "$$cleaned", to: "double", onError: 0, onNull: 0 } },
+                ],
+              },
+            },
+          },
+        },
+      },
+      {
+        $addFields: {
+          priority: {
+            $cond: [{ $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }] }, 1, 0],
+          },
+        },
+      },
+      {
+        $facet: {
+          data: [
+            { $sort: sortStage },
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: "users",
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "assignedInfo",
+                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+              },
+            },
+            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+            { $addFields: { assignedTo: "$assignedInfo" } },
+            { $project: { assignedInfo: 0 } },
+          ],
+          summary: [
+            {
+              $group: {
+                _id: null,
+                totalInvoices: { $sum: 1 },
+                sumTotalAmount: { $sum: "$totalAmountNum" },
+                unassignedCount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ["$assignedTo", null] },
+                          { $eq: ["$assignedTo", ""] },
+                          { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const facetResult = result[0];
+    const data = facetResult.data;
+    const summaryData = facetResult.summary[0] || {
+      totalInvoices: 0,
+      sumTotalAmount: 0,
+      unassignedCount: 0,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: data,
+      summary: {
+        totalInvoices: summaryData.totalInvoices,
+        totalAmount: summaryData.sumTotalAmount,
+        unassignedInvoices: summaryData.unassignedCount,
+      },
+      pagination: {
+        currentPage: 1,
+        invoicesPerPage: codes.length,
+        totalPages: 1,
+      },
+    });
+  } catch (error) {
+    console.error("fetchInvoicesByList error:", error);
     res.status(500).json({ message: "Lỗi server" });
   }
 };
