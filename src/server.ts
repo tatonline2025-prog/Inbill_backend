@@ -54,8 +54,7 @@ app.use("/api/v1/finance", sumRoute);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
+// Những hàm chạy 1 lần (chỉ mở khi cần thiết)
 // removeInvoice();
-
 // findDuplicateInvoiceNumbers();
-
 // updateAllCollectionFee();
