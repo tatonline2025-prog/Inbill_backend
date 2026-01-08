@@ -83,13 +83,8 @@ export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Lấy tất cả hoá đơn CHƯA THU được giao cho người dùng hiện tại.
- * GET /api/invoices/user/uncollected
- */
 export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) => {
   try {
-    // 1️⃣ Kiểm tra xác thực người dùng
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
@@ -97,12 +92,10 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
       });
     }
 
-    // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "not_collected" })
-      .populate("assignedTo", "fullName email phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName email phone collectionFee")
       .sort({ billing_period: -1 });
 
-    // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices || invoices.length === 0) {
       return res.status(404).json({
         success: false,
@@ -378,18 +371,13 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const match: any = {};
 
     if (req.user?.role === "admin") {
-      // Kiểm tra: Nếu KHÔNG phải string HOẶC là string nhưng rỗng thì gán = "all"
-      if (typeof assignedUser !== "string" || !assignedUser.trim()) {
-        assignedUser = "all";
-      }
-
-      // Xử lý isPaid
       if (isPaid === "true") {
         match.isPaid = true;
       }
     } else {
       match.isPaid = { $ne: true };
     }
+
     if (printStatus && printStatus !== "all") {
       match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
     }
@@ -398,27 +386,23 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionStatus = collectionStatus;
     }
 
-    if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one") {
-      // Nếu truyền id cụ thể → chỉ lấy hóa đơn của người đó hoặc hóa đơn chưa giao
+    if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one" && req.user?.role === "admin") {
       match.$or = [
         // Hóa đơn đã được giao cho chính người đó
         { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
 
-        // Hóa đơn chưa giao + cùng tỉnh
         {
           $and: [
             {
               $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
             },
-            { province: userprovince }, // thay bằng biến tỉnh của user
+            { province: userprovince },
           ],
         },
       ];
     } else if (assignedUser === "no_one") {
-      // Nếu chọn "no_one" → chỉ lấy hóa đơn chưa giao (bỏ điều kiện tỉnh nếu bạn không muốn lọc theo tỉnh)
       match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
     } else {
-      // Nếu không truyền hoặc chọn "all" → lấy TẤT CẢ kể cả chưa giao
       match.$or = [
         { assignedTo: { $exists: true } },
         { assignedTo: { $exists: false } },
@@ -966,14 +950,14 @@ export const searchInvoice = async (req: Request, res: Response) => {
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
     }
-    if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
-      match.$or = [
-        { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
-        {
-          $and: [{ $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }] }, { province: userprovince }],
-        },
-      ];
-    }
+    // if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
+    //   match.$or = [
+    //     { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
+    //     {
+    //       $and: [{ $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }] }, { province: userprovince }],
+    //     },
+    //   ];
+    // }
 
     if (req.user?.role !== "admin") {
       match.isPaid = { $ne: true };
