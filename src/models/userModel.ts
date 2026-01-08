@@ -11,9 +11,9 @@ const userSchema = new mongoose.Schema(
     // Tên đầy đủ của người dùng
     fullName: { type: String, required: true },
 
-    email: { type: String, required: true, unique: true },
-
     phone: { type: String, unique: true },
+
+    stt: { type: Number, default: "" },
 
     bankAccount: { type: String, unique: true },
     bankName: { type: String },
@@ -54,5 +54,4 @@ export default User;
 export interface IUser {
   _id: string;
   fullName: string;
-  email: string;
 }

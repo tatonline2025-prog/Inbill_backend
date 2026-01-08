@@ -908,7 +908,7 @@ export const getAllCollaborators = async (req: Request, res: Response) => {
     // .select() dùng để chỉ lấy những trường cần thiết, tránh lộ password
 
     const collaborators = await User.find({ role: { $ne: "admin" }, usertype: "collaborator" })
-      .select("_id fullName email phone") // Lấy ID, Tên, Email, Mã CTV, SĐT
+      .select("_id fullName  phone") // Lấy ID, Tên,  Mã CTV, SĐT
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

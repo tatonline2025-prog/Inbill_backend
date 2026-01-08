@@ -65,24 +65,16 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { userName, email, password, fullName, province, usertype } = req.body;
+    const { userName, password, fullName, province, usertype, phone, stt } = req.body;
 
     // --- VALIDATION ---
-    if (!userName || !password || !email || !fullName || !province || !usertype) {
-      return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin: username, password, fullName." });
+    if (!userName || !password || !fullName || !province || !usertype || !stt) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin: Họ và tên, số thứ tự, mật khẩu, tên đăng nhập,...." });
     }
 
     const normalizedUsername = userName.trim().toLowerCase();
-    const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ $or: [{ username: normalizedUsername }, { email: normalizedEmail }] });
-
-    if (existingUser) {
-      if (email === existingUser.email) {
-        return res.status(400).json({ message: "Email này đã được sử dụng." });
-      }
-
-      return res.status(400).json({ message: "Username này đã được sử dụng." });
-    }
 
     // --- HASH PASSWORD ---
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -95,22 +87,21 @@ export const register = async (req: Request, res: Response) => {
     if (!req.user || req.user.role !== "admin") {
       return res.status(403).json({ message: "Chỉ admin mới có quyền tạo tài khoản mới." });
     }
-    createdBy = req.user._id; // Gán ID của admin đã tạo user này
+    createdBy = req.user._id;
 
-    // --- CREATE USER ---
     const newUser = await User.create({
       username: normalizedUsername,
       password: hashedPassword,
       fullName,
-      email,
       province,
       usertype,
       role,
+      phone,
+      stt,
       collectionFee: 0,
       createdBy,
     });
 
-    // Không trả về password trong response
     const userResponse = {
       id: newUser._id,
       username: newUser.username,

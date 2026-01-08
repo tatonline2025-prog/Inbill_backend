@@ -217,11 +217,9 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     // 1️⃣ Lấy tất cả dữ liệu hóa đơn
     let invoices: IInvoice[];
     if (req.user?.role === "user") {
-      invoices = await Invoice.find({ assignedTo: req.user?._id })
-        .populate("assignedTo", "fullName email phone")
-        .lean();
+      invoices = await Invoice.find({ assignedTo: req.user?._id }).populate("assignedTo", "fullName  phone").lean();
     } else {
-      invoices = await Invoice.find({}).populate("assignedTo", "fullName email phone").lean();
+      invoices = await Invoice.find({}).populate("assignedTo", "fullName  phone").lean();
     }
 
     if (!invoices.length) {
@@ -287,7 +285,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
-      .populate("assignedTo", "fullName email phone")
+      .populate("assignedTo", "fullName  phone")
       .lean();
 
     if (!invoices.length) {
@@ -344,7 +342,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
 
     // ✅ Lấy dữ liệu hóa đơn theo người phụ trách
     const invoices: IInvoice[] = await Invoice.find({ assignedTo: userID })
-      .populate("assignedTo", "fullName email phone")
+      .populate("assignedTo", "fullName  phone")
       .lean();
 
     if (!invoices.length) {
@@ -459,7 +457,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     // 4. Truy vấn Database
     // populate assignedTo để lấy tên nhân viên
     const invoices: any[] = await Invoice.find(match)
-      .populate("assignedTo", "fullName email phone")
+      .populate("assignedTo", "fullName  phone")
       .sort({ updatedAt: -1 }) // Sắp xếp mới nhất trước
       .lean();
 

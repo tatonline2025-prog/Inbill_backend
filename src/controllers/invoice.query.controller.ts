@@ -26,7 +26,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id })
-      .populate("assignedTo", "fullName email phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 4️⃣ Trả về dữ liệu
@@ -68,7 +68,7 @@ export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, billing_period })
-      .populate("assignedTo", "fullName email phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 4️⃣ Trả về dữ liệu
@@ -93,7 +93,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
     }
 
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "not_collected" })
-      .populate("assignedTo", "fullName email phone collectionFee")
+      .populate("assignedTo", "fullName  phone collectionFee")
       .sort({ billing_period: -1 });
 
     if (!invoices || invoices.length === 0) {
@@ -230,7 +230,7 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
 
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "collected" })
-      .populate("assignedTo", "fullName email phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
+      .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1 });
 
     // 3️⃣ Nếu không có hoá đơn nào
@@ -274,7 +274,7 @@ export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response
       assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "not_collected",
-    }).populate("assignedTo", "fullName email phone collectionFee"); // Nếu muốn lấy thêm thông tin người được chỉ định
+    }).populate("assignedTo", "fullName  phone collectionFee"); // Nếu muốn lấy thêm thông tin người được chỉ định
 
     // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices) {
@@ -317,7 +317,7 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
       assignedTo: req.user._id,
       invoiceNumber: customerCode,
       collectionStatus: "collected",
-    }).populate("assignedTo", "fullName email phone collectionFee"); // Nếu muốn lấy thêm thông tin người được chỉ định
+    }).populate("assignedTo", "fullName  phone collectionFee"); // Nếu muốn lấy thêm thông tin người được chỉ định
 
     // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices) {
@@ -550,7 +550,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
                 localField: "assignedTo",
                 foreignField: "_id",
                 as: "assignedInfo",
-                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
               },
             },
             // Unwind để biến mảng assignedInfo thành object (nếu có)
@@ -767,7 +767,7 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
                 localField: "assignedTo",
                 foreignField: "_id",
                 as: "assignedInfo",
-                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
               },
             },
             { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
@@ -900,7 +900,7 @@ export const fetchTop20HighestInvoices = async (req: Request, res: Response) => 
           localField: "assignedTo",
           foreignField: "_id",
           as: "assignedToInfo",
-          pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+          pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
         },
       },
       { $unwind: { path: "$assignedToInfo", preserveNullAndEmptyArrays: true } },
@@ -1016,7 +1016,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
                 localField: "assignedTo",
                 foreignField: "_id",
                 as: "assignedInfo",
-                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
               },
             },
             { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
@@ -1135,7 +1135,7 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
                 localField: "assignedTo",
                 foreignField: "_id",
                 as: "assignedInfo",
-                pipeline: [{ $project: { fullName: 1, email: 1, phone: 1, collectionFee: 1 } }],
+                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
               },
             },
             { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
