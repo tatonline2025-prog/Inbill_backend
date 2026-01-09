@@ -211,22 +211,37 @@ const configureColumnWidths = (worksheet: XLSX.WorkSheet) => {
  * GET /api/invoices/export-all?userId=...&userRole=...
  */
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
-  // console.log(req.user?._id, req.user?.role);
-
   try {
-    // 1️⃣ Lấy tất cả dữ liệu hóa đơn
-    let invoices: IInvoice[];
+    const { userIds, collectionStatus, paymentStatus } = req.query;
+
+    let filter: any = {};
+
     if (req.user?.role === "user") {
-      invoices = await Invoice.find({ assignedTo: req.user?._id }).populate("assignedTo", "fullName  phone").lean();
-    } else {
-      invoices = await Invoice.find({}).populate("assignedTo", "fullName  phone").lean();
+      filter.assignedTo = req.user._id;
+    } else if (userIds) {
+      const idArray = (userIds as string).split(",");
+      filter.assignedTo = { $in: idArray };
     }
+
+    if (collectionStatus === "paid") {
+      filter.collectionStatus = "collected";
+    } else if (collectionStatus === "unpaid") {
+      filter.collectionStatus = { $ne: "collected" };
+    }
+
+    if (paymentStatus === "true") {
+      filter.isPaid = true;
+    } else if (paymentStatus === "false") {
+      filter.isPaid = false;
+    }
+
+    const invoices = await Invoice.find(filter).populate("assignedTo", "fullName phone").lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "Không có dữ liệu hóa đơn để xuất." });
+      return res.status(404).json({ message: "Không tìm thấy dữ liệu phù hợp với bộ lọc." });
     }
 
-    // 2️⃣ Chuẩn bị dữ liệu xuất ra Excel — giống cấu trúc bên exportInvoicesToExcelPrinted
+    // 4️⃣ Chuẩn bị dữ liệu cho Excel
     const dataForExcel = invoices.map((invoice, index) => ({
       STT: index + 1,
       "Mã khách hàng": invoice.invoiceNumber || "",
@@ -236,28 +251,26 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       Tên: invoice.customerName || "",
       "Địa chỉ": invoice.customerAddress || "",
       Trạm: invoice.recordBookCode,
+      "Người phụ trách": (invoice as any).assignedTo?.fullName || "N/A",
     }));
 
-    // 3️⃣ Tạo workbook + worksheet
+    // 5️⃣ Tạo Workbook và gửi file
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Danh Sách Hóa Đơn");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Báo cáo");
 
-    // 4️⃣ Cấu hình độ rộng cột — đồng bộ với hàm Printed
+    // Giả định bạn đã có hàm configureColumnWidths
     configureColumnWidths(worksheet);
 
-    // 5️⃣ Xuất ra buffer
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
-
-    // 6️⃣ Gửi file về client
-    const fileName = `tat-ca-hoa-don-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `bao-cao-hoa-don-${new Date().getTime()}.xlsx`;
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    res.send(buffer);
-  } catch (error) {
-    console.error("❌ Lỗi khi xuất file Excel:", error);
-    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+    return res.send(buffer);
+  } catch (error: any) {
+    console.error("❌ Lỗi Backend Export:", error);
+    return res.status(500).json({ message: "Lỗi hệ thống", detail: error.message });
   }
 };
 
