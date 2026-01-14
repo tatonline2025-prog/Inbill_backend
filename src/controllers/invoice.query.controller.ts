@@ -363,6 +363,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       isPaid,
     } = req.query;
 
+    const hasFilter = !!((printStatus && printStatus !== "all") || (collectionStatus && collectionStatus !== "all"));
+
     const page = parseInt(currentPage as string, 10) || 1;
     const limit = parseInt(invoicesPerPage as string, 10) || 20;
     const skip = (page - 1) * limit;
@@ -530,7 +532,31 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       {
         $addFields: {
           priority: {
-            $cond: [{ $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $gt: ["$totalAmountNum", 0] }] }, 1, 0],
+            $cond: {
+              if: { $eq: [hasFilter, true] }, // Nếu CÓ bộ lọc thì mới gán nhãn
+              then: {
+                $switch: {
+                  branches: [
+                    {
+                      case: {
+                        $and: [
+                          { $eq: ["$collectionStatus", "not_collected"] },
+                          { $ne: ["$isPaid", true] },
+                          { $gt: ["$totalAmountNum", 0] },
+                        ],
+                      },
+                      then: 2,
+                    },
+                    {
+                      case: { $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $eq: ["$isPaid", true] }] },
+                      then: 1,
+                    },
+                  ],
+                  default: 0,
+                },
+              },
+              else: 0,
+            },
           },
         },
       },
@@ -597,7 +623,6 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       unassignedCount: 0,
     };
 
-    // ✅ Trả kết quả
     res.status(200).json({
       success: true,
       data: data,
@@ -614,6 +639,143 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("fetchallInvoice error:", error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+export const fetchUserInvoices = async (req: Request, res: Response) => {
+  try {
+    const {
+      currentPage = "1",
+      invoicesPerPage = "20",
+      printStatus,
+      collectionStatus,
+      province,
+      customerCode,
+      stationCode,
+      collectionDate,
+      sortField,
+      sortDirection,
+    } = req.query;
+
+    const targetUserId = req.user?._id;
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "Thiếu thông tin người dùng" });
+    }
+
+    const page = parseInt(currentPage as string, 10) || 1;
+    const limit = parseInt(invoicesPerPage as string, 10) || 20;
+    const skip = (page - 1) * limit;
+
+    const match: any = {
+      assignedTo: new mongoose.Types.ObjectId(targetUserId as string),
+    };
+
+    if (req.user?.role !== "admin") {
+      match.isPaid = { $ne: true };
+    }
+
+    if (printStatus && printStatus !== "all") {
+      match.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
+    }
+
+    if (collectionStatus && collectionStatus !== "all") {
+      match.collectionStatus = collectionStatus;
+    }
+
+    if (province && province !== "all") {
+      match.province = province;
+    }
+
+    if (collectionDate && collectionStatus === "collected") {
+      const dateStr = String(collectionDate);
+      dayjs.extend(utc);
+      dayjs.extend(timezone);
+      const startOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+      const endOfDay = dayjs.tz(dateStr, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+      match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    const searchConditions: any[] = [];
+    if (customerCode) searchConditions.push({ invoiceNumber: new RegExp(customerCode as string, "i") });
+    if (stationCode) searchConditions.push({ recordBookCode: new RegExp(stationCode as string, "i") });
+
+    if (searchConditions.length > 0) {
+      match.$or = searchConditions;
+    }
+
+    const defaultSort: any = { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 };
+    let sortStage = defaultSort;
+    if (sortField && sortDirection && sortDirection !== "none") {
+      sortStage = { [sortField as string]: sortDirection === "asc" ? 1 : -1, ...defaultSort };
+    }
+
+    const result = await Invoice.aggregate([
+      { $match: match },
+      {
+        $addFields: {
+          totalAmountNum: {
+            $let: {
+              vars: {
+                cleaned: {
+                  $trim: {
+                    input: {
+                      $replaceAll: {
+                        input: { $toString: { $ifNull: ["$totalAmount", "0"] } },
+                        find: ",",
+                        replacement: "",
+                      },
+                    },
+                  },
+                },
+              },
+              in: {
+                $cond: [
+                  { $or: [{ $eq: ["$$cleaned", ""] }, { $regexMatch: { input: "$$cleaned", regex: /^[^\d.-]+$/ } }] },
+                  0,
+                  { $convert: { input: "$$cleaned", to: "double", onError: 0, onNull: 0 } },
+                ],
+              },
+            },
+          },
+        },
+      },
+      {
+        $facet: {
+          data: [{ $sort: sortStage }, { $skip: skip }, { $limit: limit }],
+          summary: [
+            {
+              $group: {
+                _id: null,
+                totalInvoices: { $sum: 1 },
+                sumTotalAmount: { $sum: "$totalAmountNum" },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const facetResult = result[0];
+    const data = facetResult.data;
+    const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0 };
+
+    res.status(200).json({
+      success: true,
+      data,
+      summary: {
+        totalInvoices: summaryData.totalInvoices,
+        totalAmount: summaryData.sumTotalAmount,
+      },
+      pagination: {
+        currentPage: page,
+        invoicesPerPage: limit,
+        totalPages: Math.ceil(summaryData.totalInvoices / limit),
+      },
+    });
+  } catch (error) {
+    console.error("fetchUserInvoices error:", error);
     res.status(500).json({ message: "Lỗi server" });
   }
 };
@@ -1296,6 +1458,142 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error in getInvoiceSummary:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getCollectionSummary = async (req: Request, res: Response) => {
+  try {
+    const { assignedUserId } = req.query;
+    const match: any = {};
+
+    if (assignedUserId && assignedUserId !== "all") {
+      if (assignedUserId === "no_one") {
+        match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+      } else if (mongoose.Types.ObjectId.isValid(assignedUserId as string)) {
+        match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
+      }
+    }
+
+    const summary = await Invoice.aggregate([
+      { $match: match },
+
+      {
+        $addFields: {
+          amountValue: {
+            $let: {
+              vars: {
+                cleaned: {
+                  $trim: {
+                    input: {
+                      $replaceAll: {
+                        input: { $toString: { $ifNull: ["$totalAmount", "0"] } },
+                        find: ",",
+                        replacement: "",
+                      },
+                    },
+                  },
+                },
+              },
+              in: {
+                $cond: [
+                  {
+                    $or: [{ $eq: ["$$cleaned", ""] }, { $regexMatch: { input: "$$cleaned", regex: /^[^\d.-]+$/ } }],
+                  },
+                  0,
+                  { $toDouble: "$$cleaned" },
+                ],
+              },
+            },
+          },
+        },
+      },
+
+      // Gom nhóm và tính toán 4 chỉ số cùng lúc
+      {
+        $group: {
+          _id: null,
+
+          totalCount: { $sum: 1 },
+          totalAmount: { $sum: "$amountValue" },
+
+          collectedCount: {
+            $sum: { $cond: [{ $eq: ["$collectionStatus", "collected"] }, 1, 0] },
+          },
+          collectedAmount: {
+            $sum: {
+              $cond: [{ $eq: ["$collectionStatus", "collected"] }, "$amountValue", 0],
+            },
+          },
+
+          notCollectedCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $ne: ["$isPaid", true] }],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          notCollectedAmount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [{ $eq: ["$collectionStatus", "not_collected"] }, { $ne: ["$isPaid", true] }],
+                },
+                "$amountValue",
+                0,
+              ],
+            },
+          },
+
+          paidCount: {
+            $sum: { $cond: [{ $eq: ["$isPaid", true] }, 1, 0] },
+          },
+          paidAmount: {
+            $sum: { $cond: [{ $eq: ["$isPaid", true] }, "$amountValue", 0] },
+          },
+        },
+      },
+    ]);
+
+    // Format dữ liệu trả về cho Frontend
+    const result = summary[0] || {
+      totalCount: 0,
+      totalAmount: 0,
+      collectedCount: 0,
+      collectedAmount: 0,
+      notCollectedCount: 0,
+      notCollectedAmount: 0,
+      paidCount: 0,
+      paidAmount: 0,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total: {
+          count: result.totalCount,
+          amount: result.totalAmount,
+        },
+        collected: {
+          count: result.collectedCount,
+          amount: result.collectedAmount,
+        },
+        notCollected: {
+          count: result.notCollectedCount,
+          amount: result.notCollectedAmount,
+        },
+        isPaid: {
+          count: result.paidCount,
+          amount: result.paidAmount,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("getInvoiceSummary error:", error);
+    res.status(500).json({ success: false, message: "Lỗi server khi lấy thống kê" });
   }
 };
 

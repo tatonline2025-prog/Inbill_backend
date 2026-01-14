@@ -28,6 +28,8 @@ import {
   fetchInvoicesByList,
   fetchTop20HighestInvoices,
   fetchTop3StationsByUser,
+  fetchUserInvoices,
+  getCollectionSummary,
   getInvoiceSummary,
   getLatestBillingPeriod,
   searchInvoice,
@@ -59,9 +61,11 @@ router.post(
 );
 
 router.get("/summary", getInvoiceSummary);
+router.get("/collectsummary", authenticate, getCollectionSummary);
 router.get("/search", authenticate, searchInvoice);
 
 router.get("/fetchall", authenticate, fetchallInvoice);
+router.get("/fetchuserinvoices", authenticate, fetchUserInvoices);
 router.post("/fetchbylist", authenticate, fetchInvoicesByList);
 router.get("/forcopy", fetchAllInvoicesForCopy);
 router.get("/largest", authenticate, fetchTop20HighestInvoices);
