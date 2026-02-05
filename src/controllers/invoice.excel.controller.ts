@@ -44,29 +44,32 @@ const cleanNumberString = (value: any): string => {
  */
 export const previewExcel = async (req: Request, res: Response) => {
   try {
-    if (!req.file) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (!files.excelFile || files.excelFile.length === 0) {
       return res.status(400).json({ message: "Không tìm thấy file nào được tải lên." });
     }
 
-    const { userId } = req.body;
+    const userId = req.body.userId;
 
     const user = await User.findById(userId);
-    if (!user) res.status(400).json({ message: "Không tìm thấy người dùng trong CSDL" });
+    if (!user) return res.status(400).json({ message: "Không tìm thấy người dùng trong CSDL" });
 
-    const fileBuffer = req.file.buffer;
+    const fileBuffer = files.excelFile[0].buffer;
     const workbook = XLSX.read(fileBuffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-    // Tạo danh sách hóa đơn
+    // Tạo danh sách hóa đơn với thứ tự từ Excel
     const documentsToCreate = jsonData
-      .map((row) => {
+      .map((row, index) => {
         const newDoc: any = {
           assignedTo: userId,
           province: user?.province,
           billing_period: req.body.billing_period,
           issueDate: new Date(),
+          excelRowIndex: index + 1, // Thứ tự từ Excel để sắp xếp đúng thứ tự
+          sortPriority: 1, // Ưu tiên sắp xếp lên trên
         };
 
         for (const excelHeader in columnMapping) {
@@ -92,23 +95,17 @@ export const previewExcel = async (req: Request, res: Response) => {
       });
     }
 
-    // 🔹 Cập nhật / thêm mới hoá đơn
-    const bulkOps = documentsToCreate.map((doc) => ({
-      updateOne: {
-        filter: {
-          invoiceNumber: doc.invoiceNumber,
-        },
-        update: { $set: doc },
-        upsert: true,
-      },
-    }));
+    // 🔹 Thêm mới hoá đơn theo thứ tự từ Excel (cho phép trùng lặp customer codes)
+    let inserted = 0;
 
-    const result = await Invoice.bulkWrite(bulkOps);
+    for (const doc of documentsToCreate) {
+      await Invoice.create(doc);
+      inserted++;
+    }
 
     res.status(200).json({
-      message: "Đã thêm/cập nhật hoá đơn thành công.",
-      inserted: result.upsertedCount,
-      modified: result.modifiedCount,
+      message: "Đã thêm hoá đơn thành công.",
+      inserted,
     });
   } catch (error) {
     console.error("Lỗi khi xử lý file Excel:", error);
@@ -133,13 +130,14 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
     // console.log("Excel raw data:", jsonData);
-
     const documentsToCreate = jsonData
-      .map((row) => {
+      .map((row, index) => {
         const newDoc: any = {
           issueDate: new Date(),
           province: req.body.province,
           billing_period: req.body.billing_period,
+          excelRowIndex: index + 2, // Actual Excel row number (header is row 1, data starts from row 2)
+          sortPriority: 1, // Ưu tiên sắp xếp lên trên
         };
 
         for (const excelHeader in columnMapping) {
@@ -165,22 +163,17 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       });
     }
 
-    const bulkOps = documentsToCreate.map((doc) => ({
-      updateOne: {
-        filter: {
-          invoiceNumber: doc.invoiceNumber,
-        },
-        update: { $set: doc },
-        upsert: true,
-      },
-    }));
+    // 🔹 Thêm mới hoá đơn theo thứ tự từ Excel (cho phép trùng lặp customer codes)
+    let inserted = 0;
 
-    const result = await Invoice.bulkWrite(bulkOps);
+    for (const doc of documentsToCreate) {
+      await Invoice.create(doc);
+      inserted++;
+    }
 
     res.status(200).json({
-      message: "Đã thêm/cập nhật hoá đơn thành công.",
-      inserted: result.upsertedCount,
-      modified: result.modifiedCount,
+      message: "Đã thêm hoá đơn thành công.",
+      inserted,
     });
   } catch (error) {
     console.error("Lỗi khi xử lý file Excel:", error);
@@ -235,7 +228,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       filter.isPaid = false;
     }
 
-    const invoices = await Invoice.find(filter).populate("assignedTo", "fullName phone").lean();
+    const invoices = await Invoice.find(filter).populate("assignedTo", "fullName phone").sort({ issueDate: -1, excelRowIndex: 1 }).lean();
 
     if (!invoices.length) {
       return res.status(404).json({ message: "Không tìm thấy dữ liệu phù hợp với bộ lọc." });
@@ -299,6 +292,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
       .populate("assignedTo", "fullName  phone")
+      .sort({ excelRowIndex: 1 })
       .lean();
 
     if (!invoices.length) {
@@ -356,6 +350,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
     // ✅ Lấy dữ liệu hóa đơn theo người phụ trách
     const invoices: IInvoice[] = await Invoice.find({ assignedTo: userID })
       .populate("assignedTo", "fullName  phone")
+      .sort({ excelRowIndex: 1 })
       .lean();
 
     if (!invoices.length) {
@@ -471,7 +466,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     // populate assignedTo để lấy tên nhân viên
     const invoices: any[] = await Invoice.find(match)
       .populate("assignedTo", "fullName  phone")
-      .sort({ updatedAt: -1 }) // Sắp xếp mới nhất trước
+      .sort({ excelRowIndex: 1 }) // Sắp xếp theo thứ tự Excel gốc
       .lean();
 
     if (!invoices.length) {

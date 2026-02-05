@@ -46,6 +46,12 @@ const invoiceSchema = new mongoose.Schema(
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadFileId: { type: mongoose.Schema.Types.ObjectId, ref: "ExcelUpload" },
 
+    // 📊 Thứ tự hàng trong file Excel gốc
+    excelRowIndex: { type: Number, default: null },
+
+    // 🔝 Ưu tiên sắp xếp (để đưa hóa đơn mới upload lên trên)
+    sortPriority: { type: Number, default: 0 },
+
     note: { type: String, default: "" },
   },
   {
@@ -53,9 +59,24 @@ const invoiceSchema = new mongoose.Schema(
   }
 );
 
-invoiceSchema.index({ invoiceNumber: 1, billing_period: 1 }, { unique: true });
+// Removed unique index to allow duplicate invoiceNumber (customer codes) across different billing periods or same period
 
 const Invoice = mongoose.model("Invoice", invoiceSchema);
+
+// Drop the old unique index if it exists
+(async () => {
+  try {
+    await Invoice.collection.dropIndex("invoiceNumber_1_billing_period_1");
+    console.log("Dropped old unique index");
+  } catch (err: any) {
+    if (err.code === 27) {
+      console.log("Index already dropped or not found");
+    } else {
+      console.error("Error dropping index:", err);
+    }
+  }
+})();
+
 export default Invoice;
 
 export interface IInvoice {
@@ -84,5 +105,12 @@ export interface IInvoice {
   assignedTo?: mongoose.Types.ObjectId | IUser | null;
   uploadedBy?: mongoose.Types.ObjectId | IUser | null;
   uploadFileId?: mongoose.Types.ObjectId | null;
+
+  /** 📊 Thứ tự hàng trong file Excel gốc */
+  excelRowIndex?: number | null;
+
+  /** 🔝 Ưu tiên sắp xếp (để đưa hóa đơn mới upload lên trên) */
+  sortPriority?: number | null;
+
   note?: string | null;
 }

@@ -27,7 +27,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id })
       .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
-      .sort({ billing_period: -1 });
+      .sort({ billing_period: -1, excelRowIndex: 1 });
 
     // 4️⃣ Trả về dữ liệu
     res.status(200).json(invoices);
@@ -69,7 +69,7 @@ export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, billing_period })
       .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
-      .sort({ billing_period: -1 });
+      .sort({ billing_period: -1, excelRowIndex: 1 });
 
     // 4️⃣ Trả về dữ liệu
     res.status(200).json(invoices);
@@ -94,7 +94,7 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
 
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "not_collected" })
       .populate("assignedTo", "fullName  phone collectionFee")
-      .sort({ billing_period: -1 });
+      .sort({ billing_period: -1, excelRowIndex: 1 });
 
     if (!invoices || invoices.length === 0) {
       return res.status(404).json({
@@ -231,7 +231,7 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
     // 2️⃣ Lấy danh sách hoá đơn của người dùng
     const invoices = await Invoice.find({ assignedTo: req.user._id, collectionStatus: "collected" })
       .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
-      .sort({ billing_period: -1 });
+      .sort({ billing_period: -1, excelRowIndex: 1 });
 
     // 3️⃣ Nếu không có hoá đơn nào
     if (!invoices || invoices.length === 0) {
@@ -461,9 +461,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     const defaultSort: any = {
+      sortPriority: -1, // Ưu tiên hóa đơn upload mới lên trên
+      issueDate: -1, // Sau đó theo ngày tạo
+      excelRowIndex: 1, // Sau đó theo thứ tự Excel gốc
       priority: -1,
       totalAmountNum: -1,
-      issueDate: -1,
       _id: 1,
     };
 
@@ -558,6 +560,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
               else: 0,
             },
           },
+          sortPriority: { $ifNull: ["$sortPriority", 0] }, // Đảm bảo sortPriority có giá trị mặc định
         },
       },
 
@@ -705,7 +708,7 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       match.$or = searchConditions;
     }
 
-    const defaultSort: any = { priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 };
+    const defaultSort: any = { priority: -1, totalAmountNum: -1, issueDate: -1, excelRowIndex: 1, _id: 1 };
     let sortStage = defaultSort;
     if (sortField && sortDirection && sortDirection !== "none") {
       sortStage = { [sortField as string]: sortDirection === "asc" ? 1 : -1, ...defaultSort };
@@ -867,6 +870,7 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
       priority: -1,
       totalAmountNum: -1,
       issueDate: -1,
+      excelRowIndex: 1,
       _id: 1,
     };
 
@@ -1053,7 +1057,7 @@ export const fetchTop20HighestInvoices = async (req: Request, res: Response) => 
         },
       },
       // Sort trên số thực
-      { $sort: { realAmount: -1 } },
+      { $sort: { realAmount: -1, excelRowIndex: 1 } },
       { $limit: limit },
       // Lookup thay vì populate
       {
@@ -1168,7 +1172,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
         $facet: {
           // Luồng A: Lấy data chi tiết (Data)
           data: [
-            { $sort: { amountVal: -1, _id: -1 } }, // Sort theo tiền giảm dần
+            { $sort: { amountVal: -1, excelRowIndex: 1, _id: -1 } }, // Sort theo tiền giảm dần, sau đó theo thứ tự Excel
             { $skip: skip },
             { $limit: limitNumber },
             // Lookup User
@@ -1287,7 +1291,7 @@ export const searchInvoicesByDate = async (req: Request, res: Response) => {
         $facet: {
           // Luồng A: Lấy data (Data)
           data: [
-            { $sort: { collectionDate: -1, _id: -1 } },
+            { $sort: { collectionDate: -1, excelRowIndex: 1, _id: -1 } },
             { $skip: skip },
             { $limit: limitNumber },
             // Lookup user trực tiếp

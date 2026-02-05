@@ -45,11 +45,15 @@ const upload = multer({ storage: storage });
 
 // Định nghĩa route POST
 // - Yêu cầu phải đăng nhập (authenticate)
-// - upload.single('excelFile'): Middleware của multer sẽ tìm file có name='excelFile' trong request
+// - upload.fields: Middleware của multer sẽ parse cả file và text fields
 router.post(
   "/upload-preview",
   //   authenticate,
-  upload.single("excelFile"), // 'excelFile' phải trùng với key trong FormData ở frontend
+  upload.fields([
+    { name: "excelFile", maxCount: 1 },
+    { name: "userId", maxCount: 1 },
+    { name: "billing_period", maxCount: 1 },
+  ]),
   previewExcel
 );
 

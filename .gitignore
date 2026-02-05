@@ -9,7 +9,12 @@ pnpm-debug.log*
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
-
+package.json
+tsconfig.json
+TODO.md
+test_api_excel_order.js
+test_excel_order.js
+test_invoice.xlsx
 # -------------------
 # Next.js
 # -------------------
