@@ -223,7 +223,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
     } = req.body.formData;
     const { invoiceNumber } = req.params;
 
-    if (!invoiceNumber || !customerName || !currentAmount || !previousAmount || !totalAmount || !billing_period) {
+    // Normalize amounts to handle empty strings
+    const normalizedCurrentAmount = normalizeMoneyString(currentAmount);
+    const normalizedPreviousAmount = normalizeMoneyString(previousAmount);
+    const normalizedTotalAmount = normalizeMoneyString(totalAmount);
+
+    if (!invoiceNumber || !customerName || !normalizedCurrentAmount || !normalizedPreviousAmount || !billing_period) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 

@@ -69,7 +69,7 @@ export const previewExcel = async (req: Request, res: Response) => {
           billing_period: req.body.billing_period,
           issueDate: new Date(),
           excelRowIndex: index + 1, // Thứ tự từ Excel để sắp xếp đúng thứ tự
-          sortPriority: 1, // Ưu tiên sắp xếp lên trên
+          sortPriority: Date.now(), // Ưu tiên sắp xếp theo thời gian upload
         };
 
         for (const excelHeader in columnMapping) {
@@ -137,7 +137,7 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
           province: req.body.province,
           billing_period: req.body.billing_period,
           excelRowIndex: index + 2, // Actual Excel row number (header is row 1, data starts from row 2)
-          sortPriority: 1, // Ưu tiên sắp xếp lên trên
+          sortPriority: Date.now(), // Ưu tiên sắp xếp theo thời gian upload
         };
 
         for (const excelHeader in columnMapping) {

@@ -461,9 +461,9 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     const defaultSort: any = {
-      sortPriority: -1, // Ưu tiên hóa đơn upload mới lên trên
+      excelRowIndex: 1, // Ưu tiên theo thứ tự Excel gốc
+      sortPriority: -1, // Sau đó ưu tiên hóa đơn upload mới
       issueDate: -1, // Sau đó theo ngày tạo
-      excelRowIndex: 1, // Sau đó theo thứ tự Excel gốc
       priority: -1,
       totalAmountNum: -1,
       _id: 1,
