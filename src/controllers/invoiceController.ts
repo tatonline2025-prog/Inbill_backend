@@ -347,3 +347,60 @@ export const deleteByBillingPeriod = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Lỗi server khi xoá hoá đơn!" });
   }
 };
+
+// ✅ Thêm hóa đơn nhanh (Quick Add Invoice)
+export const quickAddInvoice = async (req: Request, res: Response) => {
+  try {
+    const { invoiceNumber, customerName, totalAmount } = req.body;
+
+    // ✅ Kiểm tra dữ liệu đầu vào
+    if (!invoiceNumber || !invoiceNumber.trim()) {
+      return res.status(400).json({ message: "Vui lòng nhập mã hóa đơn" });
+    }
+
+    if (!customerName || !customerName.trim()) {
+      return res.status(400).json({ message: "Vui lòng nhập tên khách hàng" });
+    }
+
+    if (!totalAmount || isNaN(Number(totalAmount)) || Number(totalAmount) <= 0) {
+      return res.status(400).json({ message: "Vui lòng nhập tổng tiền hợp lệ" });
+    }
+
+    const normalizedTotalAmount = normalizeMoneyString(totalAmount);
+    const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
+    const currentYear = new Date().getFullYear();
+    const billing_period = `${currentMonth}/${currentYear}`;
+
+    // ✅ Kiểm tra hoá đơn trùng kỳ và số
+    const existInvoice = await Invoice.findOne({
+      invoiceNumber: invoiceNumber.trim(),
+      billing_period,
+    });
+
+    if (existInvoice) {
+      return res.status(409).json({ message: "Hóa đơn này đã tồn tại trong kỳ hiện tại" });
+    }
+
+    // ✅ Tạo bản ghi mới với dữ liệu tối thiểu
+    const newInvoice = new Invoice({
+      invoiceNumber: invoiceNumber.trim(),
+      customerName: customerName.trim(),
+      currentAmount: normalizedTotalAmount,
+      previousAmount: "0",
+      totalAmount: normalizedTotalAmount,
+      billing_period,
+      assignedTo: req.user?._id || null,
+      uploadedBy: req.user?._id || null,
+    });
+
+    await newInvoice.save();
+
+    return res.status(201).json({
+      message: "Thêm hóa đơn thành công!",
+      invoice: newInvoice,
+    });
+  } catch (error) {
+    console.error("Lỗi khi thêm hóa đơn nhanh:", error);
+    return res.status(500).json({ message: "Lỗi server khi thêm hóa đơn" });
+  }
+};

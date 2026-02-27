@@ -1626,6 +1626,142 @@ export const getLatestBillingPeriod = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Tìm kiếm hóa đơn theo Mã trạm (recordBookCode) - KHÔNG có bộ lọc nào khác.
+ * GET /api/invoices/search-by-station?stationCode=...&page=1&limit=20
+ */
+export const searchInvoicesByStationCode = async (req: Request, res: Response) => {
+  try {
+    const { stationCode, page = 1, limit = 20 } = req.query;
+
+    // Validate stationCode parameter
+    if (!stationCode || typeof stationCode !== "string" || stationCode.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu tham số stationCode.",
+      });
+    }
+
+    // Parse pagination parameters
+    const pageNumber = parseInt(page as string, 10) || 1;
+    const limitNumber = parseInt(limit as string, 10) || 20;
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Create regex pattern for case-insensitive search
+    const regex = new RegExp(stationCode as string, "i");
+
+    // Build match query - ONLY search by recordBookCode, no other filters
+    const match: any = {
+      recordBookCode: regex,
+    };
+
+    // Execute aggregation pipeline
+    const result = await Invoice.aggregate([
+      // Step 1: Filter by station code only
+      { $match: match },
+
+      // Step 2: Add numeric field for totalAmount (for sorting)
+      {
+        $addFields: {
+          totalAmountNum: {
+            $let: {
+              vars: {
+                cleaned: {
+                  $trim: {
+                    input: {
+                      $replaceAll: {
+                        input: { $toString: { $ifNull: ["$totalAmount", "0"] } },
+                        find: ",",
+                        replacement: "",
+                      },
+                    },
+                  },
+                },
+              },
+              in: {
+                $cond: [
+                  {
+                    $or: [
+                      { $eq: ["$$cleaned", ""] },
+                      { $regexMatch: { input: "$$cleaned", regex: /^[^\d.-]+$/ } },
+                    ],
+                  },
+                  0,
+                  { $convert: { input: "$$cleaned", to: "double", onError: 0, onNull: 0 } },
+                ],
+              },
+            },
+          },
+        },
+      },
+
+      // Step 3: Facet - split into data and summary
+      {
+        $facet: {
+          // Data stream: get paginated results
+          data: [
+            { $sort: { excelRowIndex: 1, _id: 1 } },
+            { $skip: skip },
+            { $limit: limitNumber },
+            // Lookup user information
+            {
+              $lookup: {
+                from: "users",
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "assignedInfo",
+                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
+              },
+            },
+            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+            { $addFields: { assignedTo: "$assignedInfo" } },
+            { $project: { assignedInfo: 0, totalAmountNum: 0 } },
+          ],
+
+          // Summary stream: count total and sum
+          summary: [
+            {
+              $group: {
+                _id: null,
+                totalInvoices: { $sum: 1 },
+                sumTotalAmount: { $sum: "$totalAmountNum" },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const facetResult = result[0];
+    const data = facetResult.data;
+    const summaryData = facetResult.summary[0] || {
+      totalInvoices: 0,
+      sumTotalAmount: 0,
+    };
+
+    // Return response
+    res.status(200).json({
+      success: true,
+      data: data,
+      summary: {
+        totalInvoices: summaryData.totalInvoices,
+        totalAmount: summaryData.sumTotalAmount,
+      },
+      pagination: {
+        currentPage: pageNumber,
+        invoicesPerPage: limitNumber,
+        totalPages: Math.ceil(summaryData.totalInvoices / limitNumber),
+      },
+    });
+  } catch (error) {
+    console.error("searchInvoicesByStationCode error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi tìm kiếm hóa đơn theo mã trạm.",
+    });
+  }
+};
+
 export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
   try {
     const { filterPrint, filterCollection, filterAssignedUser, isPaidFilter, selectedProvince } = req.query;

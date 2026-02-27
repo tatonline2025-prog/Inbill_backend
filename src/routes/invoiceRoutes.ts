@@ -5,6 +5,7 @@ import {
   deleteByBillingPeriod,
   deleteInvoice,
   markListInvoicesAsPaid,
+  quickAddInvoice,
   toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
   updateInvoice,
@@ -34,6 +35,7 @@ import {
   getLatestBillingPeriod,
   searchInvoice,
   searchInvoicesByDate,
+  searchInvoicesByStationCode,
 } from "../controllers/invoice.query.controller";
 
 const router = Router();
@@ -60,13 +62,14 @@ router.post(
 router.post(
   "/uploadWithProvince",
   //   authenticate,
-  upload.single("file"), // 'excelFile' phải trùng với key trong FormData ở frontend
+  upload.single("excelFile"), // 'excelFile' phải trùng với key trong FormData ở frontend
   previewExcelProvince
 );
 
 router.get("/summary", getInvoiceSummary);
 router.get("/collectsummary", authenticate, getCollectionSummary);
 router.get("/search", authenticate, searchInvoice);
+router.get("/search-by-station", authenticate, searchInvoicesByStationCode);
 
 router.get("/fetchall", authenticate, fetchallInvoice);
 router.get("/fetchuserinvoices", authenticate, fetchUserInvoices);
@@ -83,6 +86,7 @@ router.get("/latest-period", getLatestBillingPeriod);
 router.delete("/deleteByBillingPeriod", authenticate, deleteByBillingPeriod);
 
 router.post("/creatnew", authenticate, createInvoice);
+router.post("/quick-add", quickAddInvoice); // Quick add invoice - public endpoint
 router.post("/mark-paid-list", authenticate, authorize(["admin"]), markListInvoicesAsPaid);
 
 // Tìm 1 hoá đơn theo người đảm nhận
