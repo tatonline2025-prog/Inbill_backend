@@ -1,0 +1,58 @@
+name: V1 Jobs Scheduler
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to run (all|expire|ingest|shadow|payout)'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v1-jobs-scheduler
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      JOB_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.job || 'all' }}
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [ -z "$BACKEND_BASE_URL" ]; then
+            echo "Missing secret: BACKEND_BASE_URL"
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing secret: CRON_SECRET"
+            exit 1
+          fi
+
+      - name: Trigger cron endpoint
+        shell: bash
+        run: |
+          URL="${BACKEND_BASE_URL%/}/api/v1/jobs/cron-run?job=${JOB_NAME}"
+          echo "Calling ${URL}"
+
+          HTTP_CODE=$(curl --silent --show-error --retry 2 --retry-delay 2 --max-time 30 \
+            --output response.json --write-out "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$URL")
+
+          cat response.json
+          echo "HTTP_STATUS=${HTTP_CODE}"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Request failed"
+            exit 1
+          fi
