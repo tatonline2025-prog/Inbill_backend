@@ -1,9 +1,9 @@
-import { Request, Response } from "express";
-import Invoice from "../models/invoiceModel";
-import mongoose from "mongoose";
 import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
+import { Request, Response } from "express";
+import mongoose from "mongoose";
+import Invoice from "../models/invoiceModel";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1100,39 +1100,67 @@ export const searchInvoice = async (req: Request, res: Response) => {
       searchInvoiceNumber,
       searchType,
       page = 1,
-      limit = 20,
+      limit = 100, // Tăng limit mặc định lên 100 cho phù hợp với yêu cầu
     } = req.query;
 
     // Chuyển đổi sang số
     const pageNumber = parseInt(page as string, 10) || 1;
-    const limitNumber = parseInt(limit as string, 10) || 20;
+    const limitNumber = parseInt(limit as string, 10) || 100;
     const skip = (pageNumber - 1) * limitNumber;
 
-    // 1. Tạo điều kiện lọc (Giữ nguyên logic của bạn)
+    // 1. Tạo điều kiện lọc
     const match: any = {};
 
-    match.totalAmount = { $regex: /^\d+(\.\d+)?$/ };
-
+    // Xử lý collectionStatus - Lọc theo trạng thái thu tiền
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
     }
-    // if (assignedUserId && assignedUserId !== "all" && req.user?.role !== "admin") {
-    //   match.$or = [
-    //     { assignedTo: new mongoose.Types.ObjectId(assignedUserId as string) },
-    //     {
-    //       $and: [{ $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }] }, { province: userprovince }],
-    //     },
-    //   ];
-    // }
 
-    if (req.user?.role !== "admin") {
+    // Xử lý param isPaid - cho phép lọc hóa đơn đã đóng cước
+    const isPaidParam = req.query.isPaid;
+    if (isPaidParam === "true") {
+      match.isPaid = true;
+    } else if (isPaidParam === "false") {
+      match.isPaid = false;
+    } else if (req.user?.role !== "admin") {
+      // Nếu không có param isPaid và không phải admin -> lọc bỏ hóa đơn đã đóng cước
       match.isPaid = { $ne: true };
     }
 
+    // Xử lý assignedUserId - Phân quyền xem hóa đơn đã đóng cước
+    // Chỉ áp dụng phân quyền khi isPaid=true HOẶC khi có collectionStatus
+    if (isPaidParam === "true" || collectionStatus === "not_collected") {
+      // Admin + isPaid=true: Xem tất cả hóa đơn đã đóng cước của mọi user (không thêm assignedUserId)
+      // User + isPaid=true: Chỉ xem hóa đơn đã đóng cước của chính mình (thêm assignedUserId)
+      if (assignedUserId && assignedUserId !== "all") {
+        // Nếu có assignedUserId được truyền lên → Lọc theo assignedUserId đó
+        if (mongoose.Types.ObjectId.isValid(assignedUserId as string)) {
+          match.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
+        }
+      } else if (req.user?.role !== "admin") {
+        // Nếu không có assignedUserId và không phải admin → Lọc theo user hiện tại
+        if (req.user?._id) {
+          match.assignedTo = new mongoose.Types.ObjectId(req.user._id.toString());
+        }
+      }
+    }
+
+    // Xử lý userprovince - Lọc theo tỉnh/thành phố
+    // Chỉ lọc theo province khi:
+    // 1. userprovince được truyền và hợp lệ (không phải undefined/null/"")
+    // 2. VÀ user là admin (admin có thể xem tất cả các tỉnh, nhưng nếu truyền province thì lọc theo)
+    const userProvinceStr = typeof userprovince === 'string' ? userprovince.trim() : '';
+    if (userProvinceStr && userProvinceStr !== "all" && userProvinceStr !== "") {
+      match.province = userProvinceStr;
+    }
+
+    // Xử lý tìm kiếm theo mã hóa đơn/mã trạm/tên khách hàng
+    // CHỈ KHI CÓ searchInvoiceNumber MỚI thực hiện tìm kiếm
     if (searchInvoiceNumber) {
       const searchStr = String(searchInvoiceNumber).trim(); // Chuyển thành chuỗi và xóa khoảng trắng thừa
 
       if (searchStr.length < 5 && searchType === "customer") {
+        // Nếu từ khóa quá ngắn (< 5 ký tự) và tìm theo mã khách hàng → không tìm kiếm
         match._id = null;
       } else {
         if (searchType === "customer") {
@@ -1148,6 +1176,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
         }
       }
     }
+    // Nếu KHÔNG có searchInvoiceNumber → Vẫn trả về kết quả (lấy tất cả theo điều kiện lọc)
 
     const result = await Invoice.aggregate([
       // Bước 1: Lọc dữ liệu

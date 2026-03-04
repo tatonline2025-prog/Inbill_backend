@@ -1,19 +1,17 @@
-import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import express from "express";
 import path from "path";
 
 import { connectDB } from "./config/db";
 
-import userRoute from "./routes/userRoute";
-import authRoute from "./routes/authRoute";
-import invoiceRoute from "./routes/invoiceRoutes";
-import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
-import transactionRoute from "./routes/transactionRoutes";
-import sumRoute from "./routes/sumRoute";
-import { findDuplicateInvoiceNumbers, removeInvoice } from "./controllers/invoiceController";
-import { updateAllCollectionFee } from "./controllers/userController";
 import Invoice from "./models/invoiceModel";
+import authRoute from "./routes/authRoute";
+import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
+import invoiceRoute from "./routes/invoiceRoutes";
+import sumRoute from "./routes/sumRoute";
+import transactionRoute from "./routes/transactionRoutes";
+import userRoute from "./routes/userRoute";
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 connectDB().then(async () => {
@@ -34,6 +32,9 @@ const allowedOrigins = [
   "http://localhost:3000", // frontend dev
   "http://localhost:8081", // frontend dev
   "https://inbill.dvtienich.vn", // frontend production
+  "https://hoadon.dvtienich.vn", // additional frontend domain
+  "https://ctvapi.dvtienich.vn", // additional API domain
+  "https://api.dvtienich.vn", // additional API domain
 ];
 
 const app = express();
