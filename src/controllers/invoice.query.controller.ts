@@ -659,6 +659,7 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       collectionDate,
       sortField,
       sortDirection,
+      isPaid,
     } = req.query;
 
     const targetUserId = req.user?._id;
@@ -675,8 +676,11 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       assignedTo: new mongoose.Types.ObjectId(targetUserId as string),
     };
 
-    if (req.user?.role !== "admin") {
-      match.isPaid = { $ne: true };
+    // User page: chỉ lọc "đã đóng cước" khi client gửi isPaid=true.
+    // Nếu isPaid=false hoặc không có param thì không áp điều kiện, để hiển thị đầy đủ dữ liệu được giao.
+    const isPaidParam = String(isPaid ?? "").toLowerCase();
+    if (isPaidParam === "true") {
+      match.isPaid = true;
     }
 
     if (printStatus && printStatus !== "all") {
