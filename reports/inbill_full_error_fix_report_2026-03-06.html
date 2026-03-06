@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbill - Báo Cáo Lỗi Chi Tiết & Cách Fix (2026-03-06)</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --line: #334155;
+        --text: #e5e7eb;
+        --sub: #94a3b8;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1f2a44, var(--bg) 48%);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 24px auto;
+        padding: 0 16px 24px;
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 90%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      h1, h2 { margin: 0 0 10px; }
+      .meta { color: var(--sub); font-size: 13px; margin: 4px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        padding: 8px;
+      }
+      th { color: var(--sub); font-weight: 600; }
+      .ok { color: var(--ok); font-weight: 700; }
+      .warn { color: var(--warn); font-weight: 700; }
+      code { color: #bfdbfe; }
+      ul { margin: 8px 0 0 18px; }
+      li { margin: 4px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="card">
+        <h1>Báo Cáo Lỗi Chi Tiết & Cách Fix - Inbill Backend</h1>
+        <p class="meta">Generated: 2026-03-06 (Asia/Bangkok)</p>
+        <p class="meta">Scope: deep scan bảo mật API, lỗi runtime/startup, dependency, endpoint health, post-deploy smoke, encoding/mojibake.</p>
+      </section>
+
+      <section class="card">
+        <h2>1) Tổng Quan Kết Quả</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Nhóm lỗi</th>
+              <th>Kết quả</th>
+              <th>Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Authorization/Access Control</td>
+              <td class="ok">Đã fix</td>
+              <td>Khóa các endpoint nhạy cảm bằng <code>authenticate + authorize(["admin"])</code>.</td>
+            </tr>
+            <tr>
+              <td>Error leakage (lộ chi tiết lỗi nội bộ)</td>
+              <td class="ok">Đã fix</td>
+              <td>Đã bỏ trả về <code>error.message</code> từ API ra client ở các điểm phát hiện.</td>
+            </tr>
+            <tr>
+              <td>Startup race + env safety</td>
+              <td class="ok">Đã fix</td>
+              <td>Chuẩn hóa khởi động server và validate env bắt buộc.</td>
+            </tr>
+            <tr>
+              <td>Dependency security</td>
+              <td class="ok">Đã fix</td>
+              <td>Loại <code>xlsx</code>, chuyển qua <code>exceljs</code>, audit sạch.</td>
+            </tr>
+            <tr>
+              <td>Health/Smoke vận hành</td>
+              <td class="ok">Đã bổ sung</td>
+              <td>Thêm endpoint <code>/health</code> + script smoke post-deploy.</td>
+            </tr>
+            <tr>
+              <td>Encoding tiếng Việt / mojibake</td>
+              <td class="warn">Theo dõi</td>
+              <td>Không phát hiện regression mới trong vòng scan này; vẫn cần kiểm tra UTF-8 ở các file cũ có lịch sử lỗi.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>2) Danh Sách Lỗi Đã Fix & Cách Fix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Lỗi</th>
+              <th>Vị trí</th>
+              <th>Cách fix đã áp dụng</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Endpoint user management thiếu admin guard</td>
+              <td><code>src/routes/userRoute.ts</code>, <code>src/controllers/userController.ts</code></td>
+              <td>Thêm guard cho <code>/fetchall</code>, <code>/changeinfo</code>, <code>/:userId/update-fee</code>; bổ sung check role trong controller.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Endpoint upload/export invoice để hở</td>
+              <td><code>src/routes/invoiceRoutes.ts</code></td>
+              <td>Khóa admin cho <code>/upload-preview</code>, <code>/uploadWithProvince</code>, <code>/forcopy</code>, các route export; <code>/quick-add</code> yêu cầu auth.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Admin transaction export thiếu admin guard</td>
+              <td><code>src/routes/transactionRoutes.ts</code>, <code>src/controllers/transactionController.ts</code></td>
+              <td>Thêm <code>authorize(["admin"])</code> ở route + defense-in-depth trong controller.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Endpoint tính toán nặng public (<code>/optimal-sum</code>)</td>
+              <td><code>src/routes/sumRoute.ts</code></td>
+              <td>Bắt buộc <code>authenticate + authorize(["admin"])</code>.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Lỗi flow save layout có thể treo request</td>
+              <td><code>src/controllers/invoiceLayoutController.ts</code></td>
+              <td>Nếu không tìm thấy <code>layoutID</code> thì tạo mới và luôn trả response; ẩn error nội bộ.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Rò rỉ chi tiết lỗi trong API invoice query</td>
+              <td><code>src/controllers/invoice.query.controller.ts</code></td>
+              <td>Xóa trả về <code>error: (error as Error).message</code> khỏi response.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Unsafe env usage cho JWT/Mongo</td>
+              <td><code>src/config/env.ts</code>, <code>src/config/db.ts</code>, <code>src/middleware/auth.ts</code>, <code>src/controllers/authController.ts</code></td>
+              <td>Tạo helper validate env bắt buộc và migrate toàn bộ caller.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Startup race + drop index trùng logic</td>
+              <td><code>src/server.ts</code>, <code>src/models/invoiceModel.ts</code></td>
+              <td>Khởi động theo thứ tự connect DB - drop legacy index một lần - listen; bỏ IIFE drop index cũ.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Dependency <code>xlsx</code> có rủi ro bảo mật</td>
+              <td><code>package.json</code>, <code>src/controllers/invoice.excel.controller.ts</code>, <code>createTestExcel.js</code></td>
+              <td>Chuyển import/export excel sang <code>exceljs</code>, gỡ <code>xlsx</code>.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+            <tr>
+              <td>Thiếu health endpoint + checklist vận hành</td>
+              <td><code>src/server.ts</code>, <code>scripts/post-deploy-smoke.ps1</code>, <code>reports/post_deploy_checklist_2026-03-06.md</code></td>
+              <td>Bổ sung <code>GET /health</code>, script smoke deploy, checklist verify production.</td>
+              <td class="ok">Fixed</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>3) Bằng Chứng Verify</h2>
+        <ul>
+          <li><code>npm audit --json</code>: 0 vulnerabilities.</li>
+          <li><code>npm run typecheck</code>: pass.</li>
+          <li><code>npm run build</code>: pass.</li>
+          <li><code>npm test</code>: pass (mapped to typecheck).</li>
+          <li><code>npm run smoke:postdeploy -- -DryRun</code>: pass.</li>
+          <li>Đã xác nhận tồn tại <code>app.get("/health")</code> tại <code>src/server.ts:62</code>.</li>
+          <li>Đã xác nhận nhiều route nhạy cảm dùng <code>authorize(["admin"])</code> tại <code>src/routes/*.ts</code>.</li>
+          <li>Đã rà lại và không còn match <code>error: (error as Error).message</code> trong <code>src/controllers</code>.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>4) Tồn Đọng / Khuyến Nghị</h2>
+        <ul>
+          <li>Đã bổ sung <code>.editorconfig</code> (UTF-8) và script scan/fix encoding để giảm nguy cơ tái phát mojibake.</li>
+          <li>Tiếp tục chạy <code>npm run check:all</code> trước mỗi deploy để giữ chất lượng ổn định.</li>
+          <li>Nên chạy smoke script với domain production thật sau deploy:
+            <code>npm run smoke:postdeploy -- -BaseUrl https://&lt;your-domain&gt;</code>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>6) Final Deep Scan Update</h2>
+        <ul>
+          <li>Harden route: <code>/api/user/deleteuser/:userId</code> đã thêm <code>authorize(["admin"])</code>.</li>
+          <li>Harden route: <code>/api/invoices/summary</code> và <code>/api/invoices/latest-period</code> đã yêu cầu <code>authenticate</code>.</li>
+          <li>Added scripts: <code>scan:encoding</code>, <code>fix:mojibake</code>, <code>check:all</code>.</li>
+          <li>Final verify pass: build, typecheck/test, audit 0 vulnerabilities, smoke dry-run pass.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>5) File Report Liên Quan</h2>
+        <ul>
+          <li><code>reports/inbill_deep_scan_report_2026-03-06.html</code> (tổng quan + các vòng update)</li>
+          <li><code>reports/inbill_error_fix_detailed_2026-03-06.html</code> (bản chi tiết trước đó)</li>
+          <li><code>reports/post_deploy_checklist_2026-03-06.md</code> (checklist vận hành)</li>
+        </ul>
+      </section>
+    </div>
+  </body>
+</html>

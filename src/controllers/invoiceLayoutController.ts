@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 export const saveInvoiceLayout = async (req: Request, res: Response) => {
   try {
     const { layoutID, layout } = req.body;
-    const user = req.user; // middleware auth đã gắn req.user (VD: { _id, username })
+    const user = req.user;
 
     if (!layout) {
       return res.status(400).json({ message: "Thiếu layout cần lưu" });
@@ -18,8 +18,7 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
 
     // console.log(layoutID, layout);
 
-    // Tìm layout hiện có
-    const existingLayout = await invoiceLayoutModel.findById({ _id: layoutID });
+    const existingLayout = layoutID ? await invoiceLayoutModel.findById(layoutID) : null;
 
     if (existingLayout) {
       existingLayout.layout = layout;
@@ -35,9 +34,23 @@ export const saveInvoiceLayout = async (req: Request, res: Response) => {
         data: existingLayout,
       });
     }
+
+    const createdLayout = await invoiceLayoutModel.create({
+      layout,
+      lastEditedBy: {
+        userId: new mongoose.Types.ObjectId(user._id),
+        username: user.username,
+      },
+      updatedAt: new Date(),
+    });
+
+    return res.status(201).json({
+      message: "Tạo layout thành công",
+      data: createdLayout,
+    });
   } catch (error) {
-    console.error("❌ Lỗi khi lưu layout:", error);
-    return res.status(500).json({ message: "Lỗi server", error });
+    console.error("saveInvoiceLayout error:", error);
+    return res.status(500).json({ message: "Lỗi server." });
   }
 };
 
@@ -47,12 +60,12 @@ export const getInvoiceLayout = async (req: Request, res: Response) => {
 
     // console.log(layout);
 
-    if (!layout) {
+    if (!layout || layout.length === 0) {
       return res.status(404).json({ message: "Chưa có layout nào được lưu" });
     }
     return res.json(layout);
   } catch (error) {
-    console.error("❌ Lỗi khi lấy layout:", error);
-    return res.status(500).json({ message: "Lỗi server", error });
+    console.error("getInvoiceLayout error:", error);
+    return res.status(500).json({ message: "Lỗi server." });
   }
 };

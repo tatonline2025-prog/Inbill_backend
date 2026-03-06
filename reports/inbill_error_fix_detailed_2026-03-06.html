@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbill - Báo Cáo Lỗi Chi Tiết & Cách Fix (2026-03-06)</title>
+    <style>
+      :root {
+        --bg: #f4f7ff;
+        --text: #17233f;
+        --sub: #5d6f95;
+        --line: #d7e0f5;
+        --ok: #0d8a57;
+        --warn: #9b6b00;
+        --crit: #b42318;
+        --card: #ffffff;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      .wrap {
+        max-width: 1220px;
+        margin: 22px auto;
+        padding: 0 14px 24px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      h1, h2 {
+        margin: 0 0 8px;
+      }
+      .meta {
+        font-size: 13px;
+        color: var(--sub);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        padding: 8px;
+      }
+      th {
+        color: #324773;
+        font-weight: 600;
+        background: #f7f9ff;
+      }
+      code {
+        color: #0d3f95;
+        background: #eef3ff;
+        border: 1px solid #dde7ff;
+        border-radius: 5px;
+        padding: 0 4px;
+      }
+      .sev-critical { color: var(--crit); font-weight: 700; }
+      .sev-high { color: #c05600; font-weight: 700; }
+      .sev-medium { color: var(--warn); font-weight: 700; }
+      .status-fixed { color: var(--ok); font-weight: 700; }
+      ul {
+        margin: 8px 0 0 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="card">
+        <h1>Báo Cáo Lỗi Chi Tiết & Cách Fix - Inbill Backend</h1>
+        <div class="meta">Ngày tạo: 2026-03-06 (Asia/Bangkok)</div>
+        <div class="meta">Phạm vi: auth/authorization, data exposure, startup flow, env safety, dependency security, build/typecheck/test.</div>
+      </section>
+
+      <section class="card">
+        <h2>Tổng Quan Kết Quả</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Tổng lỗi phát hiện</th>
+              <th>Đã fix</th>
+              <th>Build</th>
+              <th>Typecheck</th>
+              <th>Test</th>
+              <th>Audit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>14</td>
+              <td class="status-fixed">14/14</td>
+              <td class="status-fixed">PASS</td>
+              <td class="status-fixed">PASS</td>
+              <td class="status-fixed">PASS</td>
+              <td class="status-fixed">0 vulnerabilities</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Danh Sách Lỗi & Cách Fix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Mức độ</th>
+              <th>Lỗi</th>
+              <th>Vị trí</th>
+              <th>Cách fix đã áp dụng</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td class="sev-critical">Critical</td>
+              <td>Privilege escalation: sửa thông tin user không bắt buộc admin</td>
+              <td><code>src/routes/userRoute.ts</code>, <code>src/controllers/userController.ts</code></td>
+              <td>Thêm <code>authorize(["admin"])</code> ở route và check role trong controller.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td class="sev-critical">Critical</td>
+              <td>Privilege escalation: update fee user không bắt buộc admin</td>
+              <td><code>src/routes/userRoute.ts</code>, <code>src/controllers/userController.ts</code></td>
+              <td>Thêm guard admin ở route và controller.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td class="sev-high">High</td>
+              <td>Data exposure: fetch toàn bộ user không auth</td>
+              <td><code>src/routes/userRoute.ts</code></td>
+              <td>Đổi route thành <code>authenticate + authorize(["admin"])</code>.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td class="sev-high">High</td>
+              <td>Public write endpoint: quick-add invoice</td>
+              <td><code>src/routes/invoiceRoutes.ts</code></td>
+              <td>Yêu cầu <code>authenticate</code> cho <code>/quick-add</code>.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td class="sev-high">High</td>
+              <td>Public export endpoint (invoice exports)</td>
+              <td><code>src/routes/invoiceRoutes.ts</code></td>
+              <td>Khóa quyền admin cho <code>/exportExcelPrinted</code>, <code>/exportExcelByUser</code>, <code>/exportExcelCollected</code>, và endpoint for-copy.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td class="sev-high">High</td>
+              <td>Admin export transaction thiếu authorize admin</td>
+              <td><code>src/routes/transactionRoutes.ts</code>, <code>src/controllers/transactionController.ts</code></td>
+              <td>Thêm <code>authorize(["admin"])</code> ở route + check role trong controller (defense-in-depth).</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td class="sev-high">High</td>
+              <td>Endpoint compute nặng mở public (<code>/optimal-sum</code>)</td>
+              <td><code>src/routes/sumRoute.ts</code></td>
+              <td>Khóa endpoint bằng <code>authenticate + authorize(["admin"])</code>.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td class="sev-medium">Medium</td>
+              <td>Request có thể treo khi save layout với layoutID không tồn tại</td>
+              <td><code>src/controllers/invoiceLayoutController.ts</code></td>
+              <td>Nếu không tìm thấy bản ghi cũ thì tạo mới và luôn trả response.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td class="sev-medium">Medium</td>
+              <td>Error leakage (trả raw error/detail ra client)</td>
+              <td><code>src/controllers/invoiceLayoutController.ts</code>, <code>src/controllers/invoice.excel.controller.ts</code></td>
+              <td>Loại bỏ trả object lỗi thô, chỉ trả message an toàn.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td class="sev-medium">Medium</td>
+              <td>Startup flow rủi ro: listen trước khi DB ready + drop index lặp</td>
+              <td><code>src/server.ts</code>, <code>src/models/invoiceModel.ts</code></td>
+              <td>Refactor startup theo thứ tự: connect DB -> drop index 1 lần -> listen; bỏ IIFE drop-index ở model.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td class="sev-medium">Medium</td>
+              <td>Unsafe env usage (<code>process.env.X!</code>)</td>
+              <td><code>src/config/db.ts</code>, <code>src/middleware/auth.ts</code>, <code>src/controllers/authController.ts</code></td>
+              <td>Thêm <code>src/config/env.ts</code> để validate env bắt buộc và dùng helper thay non-null assertion.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>12</td>
+              <td class="sev-low">Low</td>
+              <td>Thông báo lỗi placeholder <code>"..."</code></td>
+              <td><code>src/controllers/transactionController.ts</code></td>
+              <td>Đổi thành thông báo phân quyền rõ ràng + mã HTTP 403 phù hợp.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>13</td>
+              <td class="sev-medium">Medium</td>
+              <td>Pipeline test fail giả do script placeholder</td>
+              <td><code>package.json</code></td>
+              <td>Thêm script <code>typecheck</code> và set <code>test = npm run typecheck</code>.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+            <tr>
+              <td>14</td>
+              <td class="sev-high">High</td>
+              <td>Vulnerability dependency <code>xlsx</code></td>
+              <td><code>package.json</code>, <code>src/controllers/invoice.excel.controller.ts</code>, <code>createTestExcel.js</code></td>
+              <td>Migrate import/export Excel sang <code>exceljs</code> và gỡ hoàn toàn <code>xlsx</code>.</td>
+              <td class="status-fixed">Fixed</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Danh Sách File Đã Chỉnh</h2>
+        <ul>
+          <li><code>package.json</code></li>
+          <li><code>createTestExcel.js</code></li>
+          <li><code>src/config/env.ts</code></li>
+          <li><code>src/config/db.ts</code></li>
+          <li><code>src/server.ts</code></li>
+          <li><code>src/middleware/auth.ts</code></li>
+          <li><code>src/routes/userRoute.ts</code></li>
+          <li><code>src/routes/invoiceRoutes.ts</code></li>
+          <li><code>src/routes/transactionRoutes.ts</code></li>
+          <li><code>src/routes/sumRoute.ts</code></li>
+          <li><code>src/routes/invoiceLayoutRoute.ts</code></li>
+          <li><code>src/controllers/userController.ts</code></li>
+          <li><code>src/controllers/transactionController.ts</code></li>
+          <li><code>src/controllers/invoiceLayoutController.ts</code></li>
+          <li><code>src/controllers/authController.ts</code></li>
+          <li><code>src/controllers/invoiceController.ts</code></li>
+          <li><code>src/controllers/invoice.excel.controller.ts</code></li>
+          <li><code>src/models/invoiceModel.ts</code></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Validation Commands</h2>
+        <ul>
+          <li><code>npx tsc --noEmit</code> => PASS</li>
+          <li><code>npm run build</code> => PASS</li>
+          <li><code>npm test</code> => PASS</li>
+          <li><code>npm audit --json</code> => PASS (0 vulnerabilities)</li>
+        </ul>
+      </section>
+    </div>
+  </body>
+</html>
+

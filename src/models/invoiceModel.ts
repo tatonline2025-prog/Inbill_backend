@@ -63,20 +63,6 @@ const invoiceSchema = new mongoose.Schema(
 
 const Invoice = mongoose.model("Invoice", invoiceSchema);
 
-// Drop the old unique index if it exists
-(async () => {
-  try {
-    await Invoice.collection.dropIndex("invoiceNumber_1_billing_period_1");
-    console.log("Dropped old unique index");
-  } catch (err: any) {
-    if (err.code === 27) {
-      console.log("Index already dropped or not found");
-    } else {
-      console.error("Error dropping index:", err);
-    }
-  }
-})();
-
 export default Invoice;
 
 export interface IInvoice {

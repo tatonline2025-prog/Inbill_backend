@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 import User from "../models/userModel";
+import { getJwtSecret } from "../config/env";
 
 export const login = async (req: Request, res: Response) => {
   try {
@@ -39,7 +40,7 @@ export const login = async (req: Request, res: Response) => {
         usertype: user.usertype,
         collectionFee: user.collectionFee,
       },
-      process.env.JWT_SECRET!,
+      getJwtSecret(),
       { expiresIn: "24h" } // Token sẽ hết hạn sau 8 tiếng
     );
 

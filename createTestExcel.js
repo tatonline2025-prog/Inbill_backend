@@ -1,42 +1,54 @@
-const XLSX = require('xlsx');
+const ExcelJS = require("exceljs");
 
-// Create test data with duplicate customer codes
 const testData = [
   {
-    "Mã khách hàng": "CUST001",
-    "Tên": "Customer A",
-    "Địa chỉ": "Address A",
-    "Tổng tiền": "100000",
-    "Kỳ này": "50000",
-    "Kỳ trước": "50000",
-    "Trạm": "STATION1"
+    maKhachHang: "CUST001",
+    ten: "Customer A",
+    diaChi: "Address A",
+    tongTien: "100000",
+    kyNay: "50000",
+    kyTruoc: "50000",
+    tram: "STATION1",
   },
   {
-    "Mã khách hàng": "CUST001", // Duplicate customer code
-    "Tên": "Customer A",
-    "Địa chỉ": "Address A",
-    "Tổng tiền": "150000", // Different amount
-    "Kỳ này": "75000",
-    "Kỳ trước": "75000",
-    "Trạm": "STATION1"
+    maKhachHang: "CUST001",
+    ten: "Customer A",
+    diaChi: "Address A",
+    tongTien: "150000",
+    kyNay: "75000",
+    kyTruoc: "75000",
+    tram: "STATION1",
   },
   {
-    "Mã khách hàng": "CUST002",
-    "Tên": "Customer B",
-    "Địa chỉ": "Address B",
-    "Tổng tiền": "200000",
-    "Kỳ này": "100000",
-    "Kỳ trước": "100000",
-    "Trạm": "STATION2"
-  }
+    maKhachHang: "CUST002",
+    ten: "Customer B",
+    diaChi: "Address B",
+    tongTien: "200000",
+    kyNay: "100000",
+    kyTruoc: "100000",
+    tram: "STATION2",
+  },
 ];
 
-// Create workbook and worksheet
-const worksheet = XLSX.utils.json_to_sheet(testData);
-const workbook = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+const run = async () => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Sheet1");
+  worksheet.columns = [
+    { header: "Mã khách hàng", key: "maKhachHang", width: 18 },
+    { header: "Tên", key: "ten", width: 24 },
+    { header: "Địa chỉ", key: "diaChi", width: 30 },
+    { header: "Tổng tiền", key: "tongTien", width: 14 },
+    { header: "Kỳ này", key: "kyNay", width: 14 },
+    { header: "Kỳ trước", key: "kyTruoc", width: 14 },
+    { header: "Trạm", key: "tram", width: 14 },
+  ];
+  testData.forEach((row) => worksheet.addRow(row));
+  await workbook.xlsx.writeFile("test_invoice.xlsx");
+  console.log("Test Excel file created: test_invoice.xlsx");
+};
 
-// Write to file
-XLSX.writeFile(workbook, 'test_invoice.xlsx');
+run().catch((error) => {
+  console.error("Failed to create test Excel file:", error);
+  process.exit(1);
+});
 
-console.log('Test Excel file created: test_invoice.xlsx');

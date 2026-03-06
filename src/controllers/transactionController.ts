@@ -283,7 +283,7 @@ export const getAllTransactionsForAdmin = async (req: Request, res: Response) =>
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
   if (req.user.role !== "admin") {
-    return res.status(400).json({ message: "..." });
+    return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
   try {
@@ -614,7 +614,7 @@ export const deleteTransactionByAdmin = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
   if (req.user.role !== "admin") {
-    return res.status(400).json({ message: "..." });
+    return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
   const transactionId = req.params.id;
@@ -654,6 +654,9 @@ export const deleteTransactionByAdmin = async (req: Request, res: Response) => {
 export const exportAllTransactions = async (req: Request, res: Response) => {
   if (!req.user) {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
+  }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
   try {
@@ -900,7 +903,7 @@ export const getAllCollaborators = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Không xác thực được người dùng" });
   }
   if (req.user.role !== "admin") {
-    return res.status(400).json({ message: "..." });
+    return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này" });
   }
 
   try {

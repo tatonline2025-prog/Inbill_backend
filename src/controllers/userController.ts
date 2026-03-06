@@ -25,6 +25,12 @@ export const changeInfo = async (req: Request, res: Response) => {
       message: "Không xác thực được người dùng.",
     });
   }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Tài khoản không có quyền thực hiện thao tác này.",
+    });
+  }
 
   try {
     const { editinguserId } = req.body;
@@ -124,6 +130,13 @@ export const updateAllCollectionFee = async () => {
 
 // Backend: controllers/userController.ts
 export const updateFee = async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Không xác thực được người dùng." });
+  }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Tài khoản không có quyền thực hiện thao tác này." });
+  }
+
   try {
     const { userId } = req.params; // Lấy ID user từ URL
     const { collectionFee } = req.body; // Lấy phí mới từ body

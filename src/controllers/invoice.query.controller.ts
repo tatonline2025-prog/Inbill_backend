@@ -36,7 +36,6 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -78,7 +77,6 @@ export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -110,7 +108,6 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -209,7 +206,6 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi thống kê dữ liệu.",
-      error: (error as Error).message,
     });
   }
 };
@@ -248,7 +244,6 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -291,7 +286,6 @@ export const fetchUncollectedInvoicesByUser = async (req: Request, res: Response
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -334,7 +328,6 @@ export const fetchCollectedInvoicesByUser = async (req: Request, res: Response) 
     res.status(500).json({
       success: false,
       message: "Đã có lỗi xảy ra khi lấy dữ liệu hoá đơn.",
-      error: (error as Error).message,
     });
   }
 };
@@ -1837,3 +1830,4 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Lỗi server khi lấy danh sách copy" });
   }
 };
+

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbill Deep Scan Report - 2026-03-06</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #111831;
+        --line: #24305a;
+        --text: #eaf0ff;
+        --sub: #a9b8e8;
+        --ok: #25c27a;
+        --warn: #f5b342;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top right, #1a2752, var(--bg) 45%);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      .wrap {
+        max-width: 1120px;
+        margin: 28px auto;
+        padding: 0 16px 28px;
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 86%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      h1,h2 { margin: 0 0 10px; }
+      .meta { color: var(--sub); font-size: 13px; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        padding: 9px 8px;
+      }
+      th { color: var(--sub); font-weight: 600; }
+      .ok { color: var(--ok); font-weight: 600; }
+      .warn { color: var(--warn); font-weight: 600; }
+      code { color: #b8d6ff; }
+      ul { margin: 8px 0 0 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="card">
+        <h1>Inbill Deep Scan Report</h1>
+        <p class="meta">Generated: 2026-03-06 (Asia/Bangkok)</p>
+        <p class="meta">Scope: auth/access control, export endpoints, startup flow, env safety, dependency audit, typecheck/build/test.</p>
+      </section>
+
+      <section class="card">
+        <h2>Fix Summary</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Issue</th>
+              <th>Status</th>
+              <th>Applied Fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Broken authorization on user management endpoints</td>
+              <td class="ok">Fixed</td>
+              <td>Added <code>authenticate + authorize(["admin"])</code> to <code>/api/user/fetchall</code>, <code>/changeinfo</code>, <code>/:userId/update-fee</code>.</td>
+            </tr>
+            <tr>
+              <td>Public invoice/export endpoints</td>
+              <td class="ok">Fixed</td>
+              <td>Locked upload/export/forcopy endpoints with admin authorization; quick-add now requires authentication.</td>
+            </tr>
+            <tr>
+              <td>Admin export route missing admin guard</td>
+              <td class="ok">Fixed</td>
+              <td>Added admin authorization on route and controller defense-in-depth check.</td>
+            </tr>
+            <tr>
+              <td>Public heavy compute endpoint (<code>/optimal-sum</code>)</td>
+              <td class="ok">Fixed</td>
+              <td>Protected with <code>authenticate + authorize(["admin"])</code>.</td>
+            </tr>
+            <tr>
+              <td>Layout save path could hang without response</td>
+              <td class="ok">Fixed</td>
+              <td><code>saveInvoiceLayout</code> now creates new layout if not found and always returns response.</td>
+            </tr>
+            <tr>
+              <td>Error leakage in API responses</td>
+              <td class="ok">Fixed</td>
+              <td>Removed raw error payload/detail from invoice layout and excel controllers.</td>
+            </tr>
+            <tr>
+              <td>Startup race and duplicated index drop logic</td>
+              <td class="ok">Fixed</td>
+              <td>Reworked server startup: connect DB first, drop legacy index once, then listen.</td>
+            </tr>
+            <tr>
+              <td>Unsafe non-null env usage for JWT/Mongo URI</td>
+              <td class="ok">Fixed</td>
+              <td>Added <code>src/config/env.ts</code> with required-env validation and migrated callers.</td>
+            </tr>
+            <tr>
+              <td>Placeholder error messages (<code>"..."</code>)</td>
+              <td class="ok">Fixed</td>
+              <td>Replaced with explicit 403 permission messages.</td>
+            </tr>
+            <tr>
+              <td>High vulnerability from <code>xlsx</code> dependency</td>
+              <td class="ok">Fixed</td>
+              <td>Migrated Excel import/export code to <code>exceljs</code>, removed <code>xlsx</code> from dependencies.</td>
+            </tr>
+            <tr>
+              <td>Test script always failing by placeholder command</td>
+              <td class="ok">Fixed</td>
+              <td>Updated <code>package.json</code>: <code>test</code> now runs typecheck.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Validation Run</h2>
+        <ul>
+          <li><code>npm install</code> - completed</li>
+          <li><code>npm audit --json</code> - pass (0 vulnerabilities)</li>
+          <li><code>npx tsc --noEmit</code> - pass</li>
+          <li><code>npm run build</code> - pass</li>
+          <li><code>npm test</code> - pass (mapped to <code>typecheck</code>)</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Round 2 Deep Scan (Update)</h2>
+        <p class="meta">Updated: 2026-03-06 (Asia/Bangkok)</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Check Item</th>
+              <th>Status</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Health endpoint availability</td>
+              <td class="ok">Pass</td>
+              <td>Confirmed <code>GET /health</code> in <code>src/server.ts</code>.</td>
+            </tr>
+            <tr>
+              <td>Post-deploy smoke script</td>
+              <td class="ok">Pass</td>
+              <td>Confirmed <code>scripts/post-deploy-smoke.ps1</code> and <code>smoke:postdeploy</code> script in <code>package.json</code>.</td>
+            </tr>
+            <tr>
+              <td>Authorization hardening routes</td>
+              <td class="ok">Pass</td>
+              <td>Re-verified admin/auth guards on user, invoice export/upload, sum and transaction admin export endpoints.</td>
+            </tr>
+            <tr>
+              <td>Vietnamese font/mojibake regression</td>
+              <td class="ok">Pass</td>
+              <td>Quick source scan found no new mojibake patterns; no encoding regression detected in current source set.</td>
+            </tr>
+            <tr>
+              <td>Build and typecheck regression</td>
+              <td class="ok">Pass</td>
+              <td>Re-ran <code>npm test</code> and <code>npm run build</code>: both passed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Operational Checklist Artifacts</h2>
+        <ul>
+          <li>Detailed fix report: <code>reports/inbill_error_fix_detailed_2026-03-06.html</code></li>
+          <li>Post-deploy checklist: <code>reports/post_deploy_checklist_2026-03-06.md</code></li>
+          <li>Smoke command: <code>npm run smoke:postdeploy -- -BaseUrl https://&lt;your-domain&gt;</code></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Round 3 Audit (Latest Update)</h2>
+        <p class="meta">Updated: 2026-03-06 (Asia/Bangkok)</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Issue / Check</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Internal error detail leakage in invoice query APIs</td>
+              <td class="ok">Fixed</td>
+              <td>Removed all <code>error: (error as Error).message</code> response fields in <code>src/controllers/invoice.query.controller.ts</code>.</td>
+            </tr>
+            <tr>
+              <td>Dependency security audit</td>
+              <td class="ok">Pass</td>
+              <td><code>npm audit --json</code>: 0 vulnerabilities (info/low/moderate/high/critical all zero).</td>
+            </tr>
+            <tr>
+              <td>Post-deploy smoke script validity</td>
+              <td class="ok">Pass</td>
+              <td><code>npm run smoke:postdeploy -- -DryRun</code> passed.</td>
+            </tr>
+            <tr>
+              <td>Compilation safety after fixes</td>
+              <td class="ok">Pass</td>
+              <td><code>npm run typecheck</code>, <code>npm run build</code>, and <code>npm test</code> are passing.</td>
+            </tr>
+            <tr>
+              <td>Mojibake regression scan</td>
+              <td class="warn">Monitor</td>
+              <td>No new encoding regression found in this audit round. Continue UTF-8 validation on future edits touching Vietnamese strings.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Round 4 Final Deep Scan</h2>
+        <p class="meta">Updated: 2026-03-06 (Asia/Bangkok)</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Issue / Recommendation</th>
+              <th>Status</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Harden remaining sensitive routes</td>
+              <td class="ok">Fixed</td>
+              <td>Added admin guard to <code>/api/user/deleteuser/:userId</code>; added auth guard to invoice <code>/summary</code> and <code>/latest-period</code>.</td>
+            </tr>
+            <tr>
+              <td>UTF-8 policy enforcement</td>
+              <td class="ok">Fixed</td>
+              <td>Added <code>.editorconfig</code> with UTF-8 and line-ending defaults.</td>
+            </tr>
+            <tr>
+              <td>Anti-mojibake pipeline check</td>
+              <td class="ok">Fixed</td>
+              <td>Added <code>scripts/scan-encoding.mjs</code>, <code>scripts/fix-mojibake.mjs</code>, and npm scripts <code>scan:encoding</code>, <code>fix:mojibake</code>, <code>check:all</code>.</td>
+            </tr>
+            <tr>
+              <td>Final verification</td>
+              <td class="ok">Pass</td>
+              <td><code>npm run check:all</code>, <code>npm run build</code>, <code>npm test</code>, <code>npm audit --json</code>, <code>npm run smoke:postdeploy -- -DryRun</code> all passed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </body>
+</html>

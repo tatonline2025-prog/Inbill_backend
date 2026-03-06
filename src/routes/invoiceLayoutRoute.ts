@@ -6,6 +6,6 @@ import { authenticate } from "../middleware/auth";
 const router = express.Router();
 
 router.put("/save", authenticate, saveInvoiceLayout);
-router.get("/get", getInvoiceLayout);
+router.get("/get", authenticate, getInvoiceLayout);
 
 export default router;

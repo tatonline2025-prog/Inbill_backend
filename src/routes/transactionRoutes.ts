@@ -34,7 +34,7 @@ router.post("/config/banks", authenticate, authorize(["admin"]), createBank);
 router.put("/config/banks", authenticate, authorize(["admin"]), updateBank);
 router.get("/config/banks", authenticate, authorize(["admin"]), getBanks);
 router.get("/admin", authenticate, authorize(["admin"]), getAllTransactionsForAdmin);
-router.get("/admin/export", authenticate, exportAllTransactions);
+router.get("/admin/export", authenticate, authorize(["admin"]), exportAllTransactions);
 router.get("/admin/collaborators", authenticate, authorize(["admin"]), getAllCollaborators);
 router.get("/reports/daily", authenticate, authorize(["admin"]), getDailyReport);
 
