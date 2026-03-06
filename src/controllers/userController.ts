@@ -73,6 +73,42 @@ export const changeInfo = async (req: Request, res: Response) => {
   }
 };
 
+export const changeMyInfo = async (req: Request, res: Response) => {
+  if (!req.user?._id) {
+    return res.status(401).json({
+      success: false,
+      message: "Khong xac thuc duoc nguoi dung.",
+    });
+  }
+
+  try {
+    const { fullName, province, username, pass, phone, bankAccount, bankName } = req.body.formData || {};
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ message: "Nguoi dung khong ton tai" });
+    }
+
+    if (typeof fullName === "string") user.fullName = fullName;
+    if (typeof province === "string") user.province = province;
+    if (typeof phone === "string") user.phone = phone;
+    if (typeof username === "string") user.username = username;
+    if (typeof bankAccount === "string") user.bankAccount = bankAccount;
+    if (typeof bankName === "string") user.bankName = bankName;
+
+    if (typeof pass === "string" && pass.trim() !== "") {
+      const hashedPassword = await bcrypt.hash(pass, 10);
+      user.password = hashedPassword;
+    }
+
+    await user.save();
+    return res.status(200).json({ message: "Cap nhat thong tin ca nhan thanh cong" });
+  } catch (error) {
+    console.error("Loi khi cap nhat thong tin ca nhan:", error);
+    return res.status(500).json({ message: "Da co loi xay ra tren may chu." });
+  }
+};
+
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     // ✅ Kiểm tra quyền admin

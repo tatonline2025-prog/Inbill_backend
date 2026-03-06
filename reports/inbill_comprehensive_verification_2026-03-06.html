@@ -1,0 +1,85 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inbill Comprehensive Verification - 2026-03-06</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; line-height: 1.45; }
+    h1,h2 { margin: 0 0 10px; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f9fafb; }
+    .ok { color: #166534; font-weight: 700; }
+    .warn { color: #92400e; font-weight: 700; }
+    .fail { color: #991b1b; font-weight: 700; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    .meta { color: #4b5563; }
+  </style>
+</head>
+<body>
+  <h1>Comprehensive Verification Report</h1>
+  <p class="meta">Generated: 2026-03-06</p>
+  <p class="meta">Source reviewed: <code>reports/inbill_deep_scan_report_2026-03-06.html</code>, <code>reports/inbill_error_fix_detailed_2026-03-06.html</code>, <code>reports/inbill_full_error_fix_report_2026-03-06.html</code></p>
+
+  <h2>1) Kết quả xác minh các lỗi trong report cũ</h2>
+  <table>
+    <tr><th>Nhóm lỗi trong report</th><th>Trạng thái hiện tại</th><th>Bằng chứng nhanh</th></tr>
+    <tr><td>Khóa quyền admin cho route user/invoice nhạy cảm</td><td class="ok">Đã có</td><td><code>src/routes/userRoute.ts</code>, <code>src/routes/invoiceRoutes.ts</code></td></tr>
+    <tr><td>Startup flow + env safety</td><td class="ok">Đã có</td><td><code>src/server.ts</code>, <code>src/config/env.ts</code></td></tr>
+    <tr><td>Migrate xlsx -&gt; exceljs, audit sạch</td><td class="ok">Đã có</td><td><code>src/controllers/invoice.excel.controller.ts</code>, <code>package.json</code></td></tr>
+    <tr><td>Health endpoint + smoke/checklist</td><td class="ok">Đã có</td><td><code>/health</code>, <code>scripts/post-deploy-smoke.ps1</code></td></tr>
+  </table>
+
+  <h2>2) Lỗi phát hiện thêm khi kiểm tra toàn diện</h2>
+  <table>
+    <tr><th>Vấn đề</th><th>Mức độ</th><th>Tình trạng</th><th>Fix đã áp dụng</th></tr>
+    <tr>
+      <td>FE upload theo tỉnh gửi key <code>file</code> không khớp BE nhận <code>excelFile</code></td>
+      <td class="fail">High</td>
+      <td class="ok">Fixed</td>
+      <td>Đổi FE sang <code>formData.append("excelFile", ...)</code> tại <code>src/components/UploadInvoiceWithProvinceDialog.tsx:30</code>.</td>
+    </tr>
+    <tr>
+      <td>Trang profile user gọi endpoint admin-only <code>/api/user/changeinfo</code></td>
+      <td class="fail">High</td>
+      <td class="ok">Fixed</td>
+      <td>
+        Thêm endpoint self-update: <code>PUT /api/user/changeinfo-self</code> ở <code>src/routes/userRoute.ts:10</code>.<br/>
+        Thêm controller <code>changeMyInfo</code> ở <code>src/controllers/userController.ts:76</code>.<br/>
+        FE đổi gọi sang <code>/api/user/changeinfo-self</code> ở <code>src/services/user.api.ts:39</code>.
+      </td>
+    </tr>
+    <tr>
+      <td>FE build phụ thuộc Google Font online (Inter), dễ fail môi trường nội bộ</td>
+      <td class="warn">Medium</td>
+      <td class="ok">Mitigated</td>
+      <td>Loại bỏ <code>next/font/google</code> tại <code>src/app/layout.tsx</code>.</td>
+    </tr>
+    <tr>
+      <td>Input mật khẩu profile dùng <code>type="pass"</code></td>
+      <td class="warn">Low</td>
+      <td class="ok">Fixed</td>
+      <td>Đổi thành <code>type="password"</code> tại <code>src/app/profile/page.tsx:247</code>.</td>
+    </tr>
+  </table>
+
+  <h2>3) Kiểm tra tự động sau khi fix</h2>
+  <table>
+    <tr><th>Hạng mục</th><th>Kết quả</th><th>Ghi chú</th></tr>
+    <tr><td>BE <code>npm run typecheck</code></td><td class="ok">PASS</td><td>Không lỗi TypeScript</td></tr>
+    <tr><td>BE <code>npm run build</code></td><td class="ok">PASS</td><td>Build thành công</td></tr>
+    <tr><td>FE <code>npm run lint</code></td><td class="warn">WARN</td><td>0 error, còn warning cũ</td></tr>
+    <tr><td>FE <code>npx tsc --noEmit</code></td><td class="ok">PASS</td><td>Không lỗi TypeScript</td></tr>
+    <tr><td>FE <code>npm run build</code></td><td class="warn">PARTIAL</td><td>Đã compile thành công; lỗi kết thúc do <code>spawn EPERM</code> môi trường Windows, không phải lỗi logic code.</td></tr>
+  </table>
+
+  <h2>4) Kết luận</h2>
+  <p>
+    Các mục lỗi chính trong report cũ đã được giữ trạng thái fix. Ngoài ra đã xử lý thêm 2 lỗi chức năng thực tế ảnh hưởng user flow (upload tỉnh và cập nhật profile cá nhân),
+    đồng thời giảm rủi ro build do phụ thuộc font online.
+  </p>
+</body>
+</html>
