@@ -34,6 +34,7 @@ const mapDbState = (state: number): string => {
 
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   "http://localhost:8081",
   "https://inbill.dvtienich.vn",
   "https://hoadon.dvtienich.vn",

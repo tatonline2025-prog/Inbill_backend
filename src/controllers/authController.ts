@@ -6,30 +6,48 @@ import jwt from "jsonwebtoken";
 import User from "../models/userModel";
 import { getJwtSecret } from "../config/env";
 
+const isBcryptHash = (value: string): boolean => /^\$2[aby]\$\d{2}\$.{53}$/.test(value);
+
+const normalizeUsername = (input: unknown): string => (typeof input === "string" ? input.trim().toLowerCase() : "");
+const normalizePassword = (input: unknown): string => (typeof input === "string" ? input : "");
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const login = async (req: Request, res: Response) => {
   try {
-    // 1. Lấy username và password từ body
-    const { userName, password } = req.body;
-    if (!userName || !password) {
-      return res.status(400).json({ message: "Vui lòng cung cấp username và password." });
+    const rawUsername = req.body?.userName ?? req.body?.username;
+    const normalizedUsername = normalizeUsername(rawUsername);
+    const password = normalizePassword(req.body?.password);
+
+    if (!normalizedUsername || !password) {
+      return res.status(400).json({ message: "Vui long cung cap username va password." });
     }
 
-    // 2. Tìm user trong database
-    const normalizedUsername = userName.trim().toLowerCase();
-    const user = await User.findOne({ username: normalizedUsername });
-
-    // Dùng thông báo chung để tránh lộ thông tin username có tồn tại hay không
+    // Use a case-insensitive exact-match query so migrated data with mixed-case usernames can still log in.
+    const user = await User.findOne({
+      username: { $regex: `^${escapeRegex(normalizedUsername)}$`, $options: "i" },
+    });
     if (!user) {
-      return res.status(401).json({ message: "Sai tên đăng nhập hoặc mật khẩu." });
+      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
     }
 
-    // 3. So sánh mật khẩu người dùng gửi lên với mật khẩu đã hash trong DB
+    if (typeof user.password !== "string" || !isBcryptHash(user.password)) {
+      console.error("Login blocked: invalid password hash format", { username: user.username });
+      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
+    }
+
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
-      return res.status(401).json({ message: "Sai tên đăng nhập hoặc mật khẩu." });
+      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
     }
 
-    // 4. Ký và tạo token
+    let jwtSecret: string;
+    try {
+      jwtSecret = getJwtSecret();
+    } catch (envError) {
+      console.error("Login failed: JWT secret misconfigured", envError);
+      return res.status(500).json({ message: "Server auth config is invalid (JWT_SECRET)." });
+    }
+
     const token = jwt.sign(
       {
         _id: user._id,
@@ -40,16 +58,14 @@ export const login = async (req: Request, res: Response) => {
         usertype: user.usertype,
         collectionFee: user.collectionFee,
       },
-      getJwtSecret(),
-      { expiresIn: "24h" } // Token sẽ hết hạn sau 8 tiếng
+      jwtSecret,
+      { expiresIn: "24h" }
     );
 
-    // 5. Trả về token và thông tin user (trừ password)
-    res.status(200).json({
-      message: "Đăng nhập thành công!",
+    return res.status(200).json({
+      message: "Dang nhap thanh cong!",
       token,
       user: {
-        // _id: user._id,
         username: user.username,
         fullName: user.fullName,
         province: user.province,
@@ -59,8 +75,8 @@ export const login = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Lỗi khi đăng nhập:", error);
-    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+    console.error("Loi khi dang nhap:", error);
+    return res.status(500).json({ message: "Da co loi xay ra tren may chu." });
   }
 };
 
@@ -72,7 +88,7 @@ export const register = async (req: Request, res: Response) => {
     if (!userName || !password || !fullName || !province || !usertype || !stt) {
       return res
         .status(400)
-        .json({ message: "Vui lòng điền đầy đủ thông tin: Họ và tên, số thứ tự, mật khẩu, tên đăng nhập,...." });
+        .json({ message: "Vui long dien day du thong tin: Ho va ten, so thu tu, mat khau, ten dang nhap,...." });
     }
 
     const normalizedUsername = userName.trim().toLowerCase();
@@ -80,13 +96,13 @@ export const register = async (req: Request, res: Response) => {
     // --- HASH PASSWORD ---
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // --- LOGIC XỬ LÝ ROLE VÀ CREATEDBY ---
+    // --- LOGIC XU LY ROLE VA CREATEDBY ---
     let role = "user";
     let createdBy = null;
 
-    // Chỉ admin mới được quyền tạo user con
+    // Chi admin moi duoc quyen tao user con
     if (!req.user || req.user.role !== "admin") {
-      return res.status(403).json({ message: "Chỉ admin mới có quyền tạo tài khoản mới." });
+      return res.status(403).json({ message: "Chi admin moi co quyen tao tai khoan moi." });
     }
     createdBy = req.user._id;
 
@@ -114,33 +130,27 @@ export const register = async (req: Request, res: Response) => {
       collectionFee: newUser.collectionFee,
     };
 
-    res.status(201).json({ message: "Tạo tài khoản thành công!", user: userResponse });
+    return res.status(201).json({ message: "Tao tai khoan thanh cong!", user: userResponse });
   } catch (error) {
-    console.error("Lỗi khi đăng ký:", error);
-    res.status(500).json({ message: "Đã có lỗi xảy ra trên máy chủ." });
+    console.error("Loi khi dang ky:", error);
+    return res.status(500).json({ message: "Da co loi xay ra tren may chu." });
   }
 };
 
 export const me = async (req: Request, res: Response) => {
   try {
-    // 1. Lấy ID từ req.user (đã được middleware giải mã từ token)
-    // Lưu ý: tùy middleware mà nó là req.user._id hoặc req.user.id
     const userId = req.user?._id;
 
-    // 2. Truy vấn trực tiếp vào Database để lấy dữ liệu TƯƠI MỚI nhất
-    const user = await User.findById(userId).select("-password"); // Loại bỏ pass cho an toàn
+    const user = await User.findById(userId).select("-password");
 
     if (!user) {
-      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      return res.status(404).json({ message: "Khong tim thay nguoi dung" });
     }
 
-    // 3. Trả về user mới (Lúc này collectionFee chắc chắn là số mới update)
-    res.json({
-      user: user,
-    });
+    return res.json({ user });
   } catch (error) {
-    console.error("Lỗi lấy thông tin cá nhân:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Loi lay thong tin ca nhan:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -151,26 +161,24 @@ export const changepassword = async (req: Request, res: Response) => {
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
-        message: "Bạn chưa đăng nhập hoặc token không hợp lệ.",
+        message: "Ban chua dang nhap hoac token khong hop le.",
       });
     }
 
     const userId = req.user._id;
-    // Tìm user hiện tại trong database
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "Không tìm thấy người dùng." });
+      return res.status(404).json({ message: "Khong tim thay nguoi dung." });
     }
 
-    // Mã hóa mật khẩu mới
     const hashedPassword = await bcrypt.hash(newpass, 10);
     user.password = hashedPassword;
 
     await user.save();
 
-    return res.status(200).json({ message: "Đổi mật khẩu thành công." });
+    return res.status(200).json({ message: "Doi mat khau thanh cong." });
   } catch (error) {
-    console.error("Lỗi đổi mật khẩu:", error);
-    return res.status(500).json({ message: "Đã xảy ra lỗi khi đổi mật khẩu." });
+    console.error("Loi doi mat khau:", error);
+    return res.status(500).json({ message: "Da xay ra loi khi doi mat khau." });
   }
 };

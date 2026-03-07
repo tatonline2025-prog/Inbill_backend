@@ -220,19 +220,31 @@ export const updateInvoice = async (req: Request, res: Response) => {
       recordBookCode,
       billing_period,
     } = req.body.formData;
-    const { invoiceNumber } = req.params;
+    const { invoiceId } = req.params;
+
+    console.log("=== UPDATE INVOICE DEBUG ===");
+    console.log("req.params:", req.params);
+    console.log("req.body:", req.body);
+    console.log("req.body.formData:", req.body.formData);
 
     // Normalize amounts to handle empty strings
     const normalizedCurrentAmount = normalizeMoneyString(currentAmount);
     const normalizedPreviousAmount = normalizeMoneyString(previousAmount);
     const normalizedTotalAmount = normalizeMoneyString(totalAmount);
 
-    if (!invoiceNumber || !customerName || !normalizedCurrentAmount || !normalizedPreviousAmount || !billing_period) {
+    // billing_period có thể rỗng khi cập nhật (giữ nguyên kỳ cũ)
+    if (!invoiceId || !customerName || !normalizedCurrentAmount || !normalizedPreviousAmount) {
+      console.log("=== VALIDATION FAILED ===");
+      console.log("invoiceId:", invoiceId);
+      console.log("customerName:", customerName);
+      console.log("normalizedCurrentAmount:", normalizedCurrentAmount);
+      console.log("normalizedPreviousAmount:", normalizedPreviousAmount);
+      console.log("billing_period:", billing_period);
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
-    // Kiểm tra hoá đơn
-    const invoice = await Invoice.findOne({ invoiceNumber: invoiceNumber });
+    // Kiểm tra hoá đơn tồn tại bằng _id
+    const invoice = await Invoice.findById(invoiceId);
 
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hoá đơn." });
@@ -251,7 +263,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
     );
     invoice.assignedTo = finalAssignedTo;
     invoice.updateBy = new mongoose.Types.ObjectId(user._id as string);
-    invoice.billing_period = billing_period;
+    // Chỉ cập nhật billing_period nếu có giá trị mới, giữ nguyên nếu rỗng
+    invoice.billing_period = billing_period || invoice.billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
     invoice.recordBookCode = recordBookCode;
 
