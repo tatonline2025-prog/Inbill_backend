@@ -1,4 +1,3 @@
-import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
@@ -43,19 +42,31 @@ const allowedOrigins = [
 ];
 
 const app = express();
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    exposedHeaders: ["Content-Disposition"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+
+// CORS middleware với cấu hình mạnh hơn
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Cho phép origin nếu có trong danh sách
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else if (!origin) {
+    // Fallback cho request không có origin (như Postman, mobile app)
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  
+  // Xử lý preflight request ngay lập tức
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  
+  next();
+});
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
