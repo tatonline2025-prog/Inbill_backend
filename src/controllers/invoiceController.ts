@@ -99,7 +99,9 @@ export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => 
 
 export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
   try {
-    const { invoiceNumbers } = req.body.data;
+    // Fix bug: Kiểm tra req.body.data tồn tại trước khi truy cập
+    const data = req.body?.data;
+    const invoiceNumbers = data?.invoiceNumbers;
 
     // Kiểm tra dữ liệu đầu vào
     if (!invoiceNumbers || !Array.isArray(invoiceNumbers) || invoiceNumbers.length === 0) {
@@ -134,7 +136,7 @@ export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
       matchedCount: result.matchedCount, // Số lượng bản ghi tìm thấy
     });
   } catch (err) {
-    console.error("Error updating invoices:", err);
+    console.error("Lỗi khi cập nhật danh sách hóa đơn:", err);
     res.status(500).json({ message: "Lỗi server khi cập nhật danh sách hóa đơn" });
   }
 };
@@ -263,8 +265,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
     );
     invoice.assignedTo = finalAssignedTo;
     invoice.updateBy = new mongoose.Types.ObjectId(user._id as string);
-    // Chỉ cập nhật billing_period nếu có giá trị mới, giữ nguyên nếu rỗng
-    invoice.billing_period = billing_period || invoice.billing_period;
+    // Chỉ cập nhật billing_period nếu có giá trị mới hợp lệ, giữ nguyên nếu không
+    invoice.billing_period = billing_period ?? invoice.billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
     invoice.recordBookCode = recordBookCode;
 
@@ -281,16 +283,23 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
 export const deleteInvoice = async (req: Request, res: Response) => {
   try {
-    const { invoiceNumber } = req.params;
+    const { invoiceId } = req.params;
 
-    // Xoá toàn bộ hoá đơn theo kỳ thanh toán
-    const result = await Invoice.findByIdAndDelete(invoiceNumber);
+    if (!invoiceId) {
+      return res.status(400).json({ message: "Thiếu ID hóa đơn cần xóa" });
+    }
 
-    res.status(200).json({ message: "Đã xoá hoá đơn chỉ định" });
+    // Xóa hóa đơn theo _id (MongoDB ObjectId)
+    const result = await Invoice.findByIdAndDelete(invoiceId);
 
-    // console.log("Đã xoá thành công");
+    if (!result) {
+      return res.status(404).json({ message: "Không tìm thấy hóa đơn để xóa" });
+    }
+
+    return res.status(200).json({ message: "Đã xoá hóa đơn chỉ định" });
   } catch (error) {
     console.error("Lỗi khi xoá hoá đơn:", error);
+    return res.status(500).json({ message: "Lỗi server khi xoá hóa đơn" });
   }
 };
 

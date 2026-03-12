@@ -100,7 +100,7 @@ router.get("/exportExcelPrinted", authenticate, authorize(["admin"]), exportColl
 router.get("/exportExcelByUser", authenticate, authorize(["admin"]), exportExcelByUser);
 router.get("/exportExcelCollected", authenticate, authorize(["admin"]), exportExcelCollected);
 
-router.delete("/delete/:invoiceNumber", authenticate, deleteInvoice);
+router.delete("/delete/:invoiceId", authenticate, deleteInvoice);
 router.put("/update/:invoiceId", authenticate, updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);

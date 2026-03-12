@@ -1125,8 +1125,9 @@ export const searchInvoice = async (req: Request, res: Response) => {
     }
 
     // Xử lý assignedUserId - Phân quyền xem hóa đơn đã đóng cước
-    // Chỉ áp dụng phân quyền khi isPaid=true HOẶC khi có collectionStatus
-    if (isPaidParam === "true" || collectionStatus === "not_collected") {
+    // Chỉ áp dụng phân quyền khi isPaid=true
+    // LƯU Ý: Khi collectionStatus = "not_collected" (hóa đơn chưa thu), TẤT CẢ user đều có thể thấy
+    if (isPaidParam === "true") {
       // Admin + isPaid=true: Xem tất cả hóa đơn đã đóng cước của mọi user (không thêm assignedUserId)
       // User + isPaid=true: Chỉ xem hóa đơn đã đóng cước của chính mình (thêm assignedUserId)
       if (assignedUserId && assignedUserId !== "all") {

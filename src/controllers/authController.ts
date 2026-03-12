@@ -85,10 +85,18 @@ export const register = async (req: Request, res: Response) => {
     const { userName, password, fullName, province, usertype, phone, stt } = req.body;
 
     // --- VALIDATION ---
-    if (!userName || !password || !fullName || !province || !usertype || !stt) {
+    if (!userName || typeof userName !== "string" || !userName.trim()) {
+      return res.status(400).json({ message: "Vui lòng nhập tên đăng nhập hợp lệ." });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Mật khẩu phải có ít nhất 6 ký tự." });
+    }
+
+    if (!fullName || !province || !usertype || !stt) {
       return res
         .status(400)
-        .json({ message: "Vui long dien day du thong tin: Ho va ten, so thu tu, mat khau, ten dang nhap,...." });
+        .json({ message: "Vui lòng điền đầy đủ thông tin: Họ và tên, số thứ tự, mật khẩu, tên đăng nhập,...." });
     }
 
     const normalizedUsername = userName.trim().toLowerCase();
