@@ -392,15 +392,8 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
     const currentYear = new Date().getFullYear();
     const billing_period = `${currentMonth}/${currentYear}`;
 
-    // ✅ Kiểm tra hoá đơn trùng kỳ và số
-    const existInvoice = await Invoice.findOne({
-      invoiceNumber: invoiceNumber.trim(),
-      billing_period,
-    });
-
-    if (existInvoice) {
-      return res.status(409).json({ message: "Hóa đơn này đã tồn tại trong kỳ hiện tại" });
-    }
+    // ✅ Cho phép nhiều hóa đơn cùng mã khách hàng trong cùng kỳ
+    // (Không chặn trùng invoiceNumber + billing_period ở Quick Add)
 
     // ✅ Tạo bản ghi mới với dữ liệu tối thiểu
     const newInvoice = new Invoice({
