@@ -52,6 +52,12 @@ const invoiceSchema = new mongoose.Schema(
     // 🔝 Ưu tiên sắp xếp (để đưa hóa đơn mới upload lên trên)
     sortPriority: { type: Number, default: 0 },
 
+    // 📊 Thứ tự tuyệt đối Excel (batchId * 1000000 + rowIndex)
+    excelOrder: {
+      type: Number,
+      index: true
+    },
+
     note: { type: String, default: "" },
   },
   {
@@ -97,6 +103,9 @@ export interface IInvoice {
 
   /** 🔝 Ưu tiên sắp xếp (để đưa hóa đơn mới upload lên trên) */
   sortPriority?: number | null;
+
+  /** 📊 Thứ tự tuyệt đối Excel */
+  excelOrder?: number | null;
 
   note?: string | null;
 }

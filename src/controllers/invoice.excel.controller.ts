@@ -88,6 +88,7 @@ const buildInvoiceDoc = (
     assignedTo?: string;
     province?: string;
     billingPeriod?: string;
+    batchId?: number;
   }
 ) => {
   const invoiceNumber = pickField(row, ["Mã khách hàng", "invoiceNumber", "ma khach hang"]);
@@ -111,6 +112,7 @@ const buildInvoiceDoc = (
     issueDate: new Date(),
     excelRowIndex: rowIndex,
     sortPriority: Date.now() + rowIndex,
+    excelOrder: params.batchId! * 1000000 + rowIndex,
     assignedTo: params.assignedTo || null,
     province: params.province || "",
     billing_period: params.billingPeriod || "",
@@ -154,12 +156,14 @@ export const previewExcel = async (req: Request, res: Response) => {
     }
 
     const rows = parseWorksheetRows(worksheet);
+    const batchId = Date.now();
     const docs = rows
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
           assignedTo: userId,
           province: String(user.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
+          batchId
         })
       )
       .filter(Boolean);
@@ -193,11 +197,13 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     }
 
     const rows = parseWorksheetRows(worksheet);
+    const batchId = Date.now();
     const docs = rows
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
           province: String(req.body.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
+          batchId
         })
       )
       .filter(Boolean);
@@ -219,7 +225,16 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
-    const { userIds, collectionStatus, paymentStatus } = req.query;
+    const { userIds, collectionStatus, paymentStatus, sortField = "issueDate", sortDirection = "-1" } = req.query as any;
+
+    // Dynamic sort logic (mirror query.controller)
+    const defaultSort: any = { excelOrder: 1, sortPriority: -1, issueDate: -1, priority: -1, totalAmountNum: -1, _id: 1 };
+    let sortObj: any = defaultSort;
+    
+    if (sortField && sortDirection !== "none") {
+      const direction = parseInt(sortDirection) || -1;
+      sortObj = { [sortField]: direction, ...defaultSort };
+    }
     const filter: Record<string, unknown> = {};
 
     if (req.user?.role === "user") {
@@ -242,7 +257,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
 
     const invoices = await Invoice.find(filter)
       .populate("assignedTo", "fullName phone")
-      .sort({ issueDate: -1, excelRowIndex: 1 })
+      .sort(sortObj)
       .lean();
 
     if (!invoices.length) {
@@ -289,8 +304,8 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
 
 export const exportCollectedInvoicesByDate = async (req: Request, res: Response) => {
   try {
-    const dateParam = String(req.query.date || "");
-    if (!dateParam || Number.isNaN(new Date(dateParam).getTime())) {
+    const { date: dateParam, sortField = "excelRowIndex", sortDirection = "1" } = req.query as any;
+    if (!dateParam || Number.isNaN(new Date(String(dateParam)).getTime())) {
       return res.status(400).json({ message: "Tham số 'date' không hợp lệ." });
     }
 
@@ -298,12 +313,21 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
+    // Dynamic sort for collected invoices
+    const defaultSortCollected: any = { excelOrder: 1, sortPriority: -1, collectionDate: -1, issueDate: -1 };
+    let sortObjCollected: any = defaultSortCollected;
+    
+    if (sortField && sortDirection !== "none") {
+      const direction = parseInt(sortDirection) || -1;
+      sortObjCollected = { [sortField]: direction, ...defaultSortCollected };
+    }
+
     const invoices = await Invoice.find({
       collectionStatus: "collected",
       collectionDate: { $gte: startOfDay, $lte: endOfDay },
     })
       .populate("assignedTo", "fullName phone")
-      .sort({ excelRowIndex: 1 })
+      .sort(sortObjCollected)
       .lean();
 
     if (!invoices.length) {
@@ -348,14 +372,23 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
 
 export const exportExcelByUser = async (req: Request, res: Response) => {
   try {
-    const userID = String(req.query.assignedUserId || "").trim();
-    if (!userID) {
+    const { assignedUserId: userID, sortField = "excelRowIndex", sortDirection = "1" } = req.query as any;
+    if (!userID || String(userID).trim() === "") {
       return res.status(400).json({ message: "Không có dữ liệu người dùng." });
+    }
+
+    // Dynamic sort for user export
+    const defaultSortUser: any = { excelOrder: 1, sortPriority: -1, collectionDate: -1, issueDate: -1 };
+    let sortObjUser: any = defaultSortUser;
+    
+    if (sortField && sortDirection !== "none") {
+      const direction = parseInt(sortDirection) || 1;
+      sortObjUser = { [sortField]: direction, ...defaultSortUser };
     }
 
     const invoices = await Invoice.find({ assignedTo: userID })
       .populate("assignedTo", "fullName phone")
-      .sort({ excelRowIndex: 1 })
+      .sort(sortObjUser)
       .lean();
 
     if (!invoices.length) {
@@ -407,7 +440,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
 
 export const exportExcelCollected = async (req: Request, res: Response) => {
   try {
-    const { fromDate, toDate, isClosed, status, userIds } = req.query;
+    const { fromDate, toDate, isClosed, status, userIds, sortField = "excelRowIndex", sortDirection = "1" } = req.query as any;
     if (!fromDate || !toDate) {
       return res.status(400).json({ message: "Vui lòng chọn khoảng thời gian (Từ ngày - Đến ngày)." });
     }
@@ -441,9 +474,18 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       match.isPaid = isClosed === "true";
     }
 
+    // Dynamic sort for collected export
+    const defaultSortCollectedExp: any = { excelOrder: 1, sortPriority: -1, collectionDate: -1, issueDate: -1 };
+    let sortObjCollectedExp: any = defaultSortCollectedExp;
+    
+    if (sortField && sortDirection !== "none") {
+      const direction = parseInt(sortDirection) || 1;
+      sortObjCollectedExp = { [sortField]: direction, ...defaultSortCollectedExp };
+    }
+
     const invoices = await Invoice.find(match)
       .populate("assignedTo", "fullName phone")
-      .sort({ excelRowIndex: 1 })
+      .sort(sortObjCollectedExp)
       .lean();
 
     if (!invoices.length) {

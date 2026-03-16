@@ -454,7 +454,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     const defaultSort: any = {
-      excelRowIndex: 1, // Ưu tiên theo thứ tự Excel gốc
+      excelOrder: 1, // Ưu tiên theo thứ tự Excel tuyệt đối
       sortPriority: -1, // Sau đó ưu tiên hóa đơn upload mới
       issueDate: -1, // Sau đó theo ngày tạo
       priority: -1,
@@ -705,7 +705,7 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       match.$or = searchConditions;
     }
 
-    const defaultSort: any = { priority: -1, totalAmountNum: -1, issueDate: -1, excelRowIndex: 1, _id: 1 };
+    const defaultSort: any = { excelOrder: 1, priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 };
     let sortStage = defaultSort;
     if (sortField && sortDirection && sortDirection !== "none") {
       sortStage = { [sortField as string]: sortDirection === "asc" ? 1 : -1, ...defaultSort };
@@ -864,12 +864,11 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
     }
 
     const defaultSort: any = {
-      priority: -1,
+      excelOrder: 1,     
+      priority: -1,     
       totalAmountNum: -1,
       issueDate: -1,
-      excelRowIndex: 1,
-      _id: 1,
-    };
+      _id: 1,   };
 
     let sortStage: any = {};
     if (sortField && sortDirection && sortDirection !== "none") {
@@ -1727,7 +1726,7 @@ export const searchInvoicesByStationCode = async (req: Request, res: Response) =
         $facet: {
           // Data stream: get paginated results
           data: [
-            { $sort: { excelRowIndex: 1, _id: 1 } },
+{ $sort: { excelOrder: 1, _id: 1 } },
             { $skip: skip },
             { $limit: limitNumber },
             // Lookup user information
