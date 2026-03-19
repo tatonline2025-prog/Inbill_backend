@@ -1,4 +1,4 @@
-import dayjs from "dayjs";
+﻿import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { Request, Response } from "express";
@@ -170,7 +170,7 @@ export const fetchTop3StationsByUser = async (req: Request, res: Response) => {
 
       // Bước 3: Sắp xếp giảm dần theo tổng tiền
       {
-        $sort: { totalAmount: -1 },
+        $sort: { count: -1, _id: 1 },
       },
 
       // Bước 4: Lấy top 3
@@ -453,14 +453,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       }
     }
 
-    const defaultSort: any = {
-      excelOrder: 1, // Ưu tiên theo thứ tự Excel tuyệt đối
-      sortPriority: -1, // Sau đó ưu tiên hóa đơn upload mới
-      issueDate: -1, // Sau đó theo ngày tạo
-      priority: -1,
-      totalAmountNum: -1,
-      _id: 1,
-    };
+    const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
 
     let sortStage: any = {};
 
@@ -705,7 +698,7 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       match.$or = searchConditions;
     }
 
-    const defaultSort: any = { excelOrder: 1, priority: -1, totalAmountNum: -1, issueDate: -1, _id: 1 };
+    const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
     let sortStage = defaultSort;
     if (sortField && sortDirection && sortDirection !== "none") {
       sortStage = { [sortField as string]: sortDirection === "asc" ? 1 : -1, ...defaultSort };
@@ -863,12 +856,7 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
     } else {
     }
 
-    const defaultSort: any = {
-      excelOrder: 1,     
-      priority: -1,     
-      totalAmountNum: -1,
-      issueDate: -1,
-      _id: 1,   };
+    const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
 
     let sortStage: any = {};
     if (sortField && sortDirection && sortDirection !== "none") {
@@ -1053,7 +1041,7 @@ export const fetchTop20HighestInvoices = async (req: Request, res: Response) => 
         },
       },
       // Sort trên số thực
-      { $sort: { realAmount: -1, excelRowIndex: 1 } },
+      { $sort: { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 } },
       { $limit: limit },
       // Lookup thay vì populate
       {
@@ -1173,7 +1161,22 @@ export const searchInvoice = async (req: Request, res: Response) => {
         }
       }
     }
-    // Nếu KHÔNG có searchInvoiceNumber → Vẫn trả về kết quả (lấy tất cả theo điều kiện lọc)
+    const dataPipeline: any[] = [
+      { $sort: { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 } },
+      { $skip: skip },
+      { $limit: limitNumber },
+      { $lookup: {
+          from: "users",
+          localField: "assignedTo",
+          foreignField: "_id",
+          as: "assignedInfo",
+          pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
+        },
+      },
+      { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
+      { $addFields: { assignedTo: "$assignedInfo" } },
+      { $project: { assignedInfo: 0, amountVal: 0 } }
+    ];
 
     const result = await Invoice.aggregate([
       // Bước 1: Lọc dữ liệu
@@ -1197,24 +1200,7 @@ export const searchInvoice = async (req: Request, res: Response) => {
       {
         $facet: {
           // Luồng A: Lấy data chi tiết (Data)
-          data: [
-            { $sort: { amountVal: -1, excelRowIndex: 1, _id: -1 } }, // Sort theo tiền giảm dần, sau đó theo thứ tự Excel
-            { $skip: skip },
-            { $limit: limitNumber },
-            // Lookup User
-            {
-              $lookup: {
-                from: "users",
-                localField: "assignedTo",
-                foreignField: "_id",
-                as: "assignedInfo",
-                pipeline: [{ $project: { fullName: 1, phone: 1, collectionFee: 1 } }],
-              },
-            },
-            { $unwind: { path: "$assignedInfo", preserveNullAndEmptyArrays: true } },
-            { $addFields: { assignedTo: "$assignedInfo" } },
-            { $project: { assignedInfo: 0, amountVal: 0 } }, // Xóa field tạm
-          ],
+          data: dataPipeline,
 
           // Luồng B: Thống kê tổng (Count & Sum)
           meta: [
@@ -1830,4 +1816,11 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Lỗi server khi lấy danh sách copy" });
   }
 };
+
+
+
+
+
+
+
 
