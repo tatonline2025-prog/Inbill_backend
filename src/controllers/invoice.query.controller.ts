@@ -790,8 +790,6 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
     const { codes, searchType } = req.body;
 
     const page = 1;
-    const limit = codes.length || 20;
-    const skip = (page - 1) * limit;
 
     let assignedUser = assignedUserId;
     const match: any = {};
@@ -909,8 +907,6 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
         $facet: {
           data: [
             { $sort: sortStage },
-            { $skip: skip },
-            { $limit: limit },
             {
               $lookup: {
                 from: "users",
@@ -970,7 +966,7 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
       },
       pagination: {
         currentPage: 1,
-        invoicesPerPage: codes.length,
+        invoicesPerPage: data.length,
         totalPages: 1,
       },
     });
