@@ -10,6 +10,6 @@ router.get("/fetchall", authenticate, authorize(["admin"]), fetchallUser);
 router.put("/changeinfo-self", authenticate, changeMyInfo);
 router.put("/changeinfo", authenticate, authorize(["admin"]), changeInfo);
 router.delete("/deleteuser/:userId", authenticate, authorize(["admin"]), deleteUser);
-router.put("/:userId/update-fee", authenticate, authorize(["admin"]), updateFee);
+router.put("/:userId/update-fee", authenticate, updateFee);
 
 export default router;
