@@ -91,15 +91,15 @@ const buildInvoiceDoc = (
     batchId?: number;
   }
 ) => {
-  const invoiceNumber = pickField(row, ["MĂ£ khĂ¡ch hĂ ng", "invoiceNumber", "ma khach hang"]);
+  const invoiceNumber = pickField(row, ["Mã khách hàng", "invoiceNumber", "ma khach hang"]);
   if (!invoiceNumber) return null;
 
-  const customerName = pickField(row, ["TĂªn", "customerName", "ten"]) || "";
-  const customerAddress = pickField(row, ["Äá»‹a chá»‰", "customerAddress", "dia chi"]) || "";
-  const recordBookCode = pickField(row, ["Tráº¡m", "recordBookCode", "tram"]) || "";
-  const totalAmount = normalizeMoneyString(pickField(row, ["Tá»•ng tiá»n", "totalAmount", "tong tien"]));
-  const currentAmount = normalizeMoneyString(pickField(row, ["Ká»³ nĂ y", "currentAmount", "ky nay"]));
-  const previousAmount = normalizeMoneyString(pickField(row, ["Ká»³ trÆ°á»›c", "previousAmount", "ky truoc"]));
+  const customerName = pickField(row, ["Tên", "customerName", "ten"]) || "";
+  const customerAddress = pickField(row, ["Địa chỉ", "customerAddress", "dia chi"]) || "";
+  const recordBookCode = pickField(row, ["Trạm", "recordBookCode", "tram"]) || "";
+  const totalAmount = normalizeMoneyString(pickField(row, ["Tổng tiền", "totalAmount", "tong tien"]));
+  const currentAmount = normalizeMoneyString(pickField(row, ["Kỳ nay", "currentAmount", "ky nay"]));
+  const previousAmount = normalizeMoneyString(pickField(row, ["Kỳ trước", "previousAmount", "ky truoc"]));
 
   return {
     invoiceNumber: invoiceNumber.trim(),
@@ -135,24 +135,24 @@ export const previewExcel = async (req: Request, res: Response) => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (!files?.excelFile?.length) {
-      return res.status(400).json({ message: "KhĂ´ng tĂ¬m tháº¥y file Ä‘Æ°á»£c táº£i lĂªn." });
+      return res.status(400).json({ message: "Khách hàng không tìm thấy file được tải lên." });
     }
 
     const userId = String(req.body.userId || "");
     if (!userId) {
-      return res.status(400).json({ message: "Thiáº¿u userId." });
+      return res.status(400).json({ message: "Thiếu userId." });
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "KhĂ´ng tĂ¬m tháº¥y ngÆ°á»i dĂ¹ng." });
+      return res.status(404).json({ message: "Không tìm thấy người dùng." });
     }
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(files.excelFile[0].buffer as any);
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
-      return res.status(400).json({ message: "File Excel khĂ´ng cĂ³ sheet dá»¯ liá»‡u." });
+      return res.status(400).json({ message: "File Excel không có sheet dữ liệu." });
     }
 
     const rows = parseWorksheetRows(worksheet);
@@ -169,31 +169,31 @@ export const previewExcel = async (req: Request, res: Response) => {
       .filter(Boolean);
 
     if (!docs.length) {
-      return res.status(400).json({ message: "KhĂ´ng tĂ¬m tháº¥y dá»¯ liá»‡u há»£p lá»‡ trong file Excel." });
+      return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
     const inserted = await Invoice.insertMany(docs, { ordered: true });
     return res.status(200).json({
-      message: "ÄĂ£ thĂªm hĂ³a Ä‘Æ¡n thĂ nh cĂ´ng.",
+      message: "Đã thêm hóa đơn thành công.",
       inserted: inserted.length,
     });
   } catch (error) {
     console.error("previewExcel error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
 export const previewExcelProvince = async (req: Request, res: Response) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "KhĂ´ng tĂ¬m tháº¥y file Ä‘Æ°á»£c táº£i lĂªn." });
+      return res.status(400).json({ message: "Khách hàng không tìm thấy file được tải lên." });
     }
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer as any);
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
-      return res.status(400).json({ message: "File Excel khĂ´ng cĂ³ sheet dá»¯ liá»‡u." });
+      return res.status(400).json({ message: "File Excel không có sheet dữ liệu." });
     }
 
     const rows = parseWorksheetRows(worksheet);
@@ -209,17 +209,17 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       .filter(Boolean);
 
     if (!docs.length) {
-      return res.status(400).json({ message: "KhĂ´ng tĂ¬m tháº¥y dá»¯ liá»‡u há»£p lá»‡ trong file Excel." });
+      return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
     const inserted = await Invoice.insertMany(docs, { ordered: true });
     return res.status(200).json({
-      message: "ÄĂ£ thĂªm hĂ³a Ä‘Æ¡n thĂ nh cĂ´ng.",
+      message: "Đã thêm hóa đơn thành công.",
       inserted: inserted.length,
     });
   } catch (error) {
     console.error("previewExcelProvince error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
@@ -311,14 +311,14 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       "Bao Cao",
       [
         { header: "STT", key: "stt", width: 5 },
-        { header: "MĂ£ khĂ¡ch hĂ ng", key: "maKhachHang", width: 17 },
-        { header: "Ká»³ nĂ y", key: "kyNay", width: 15 },
-        { header: "Ká»³ trÆ°á»›c", key: "kyTruoc", width: 12 },
-        { header: "Tá»•ng tiá»n", key: "tongTien", width: 15 },
-        { header: "TĂªn", key: "ten", width: 35 },
-        { header: "Äá»‹a chá»‰", key: "diaChi", width: 65 },
-        { header: "Tráº¡m", key: "tram", width: 12 },
-        { header: "NgÆ°á»i phá»¥ trĂ¡ch", key: "nguoiPhuTrach", width: 24 },
+        { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
+        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ trước", key: "kyTruoc", width: 12 },
+        { header: "Tổng tiền", key: "tongTien", width: 15 },
+        { header: "Tên", key: "ten", width: 35 },
+        { header: "Địa chỉ", key: "diaChi", width: 65 },
+        { header: "Trạm", key: "tram", width: 12 },
+        { header: "Người phụ trách", key: "nguoiPhuTrach", width: 24 },
       ],
       dataForExcel
     );
@@ -329,7 +329,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     return res.send(buffer);
   } catch (error) {
     console.error("exportInvoicesToExcel error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
@@ -337,7 +337,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
   try {
     const { date: dateParam, sortField, sortDirection } = req.query as any;
     if (!dateParam || Number.isNaN(new Date(String(dateParam)).getTime())) {
-      return res.status(400).json({ message: "Tham sá»‘ 'date' khĂ´ng há»£p lá»‡." });
+      return res.status(400).json({ message: "Tham số 'date' không hợp lệ." });
     }
 
     const targetDate = new Date(dateParam);
@@ -362,7 +362,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
       .lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "KhĂ´ng cĂ³ dá»¯ liá»‡u hĂ³a Ä‘Æ¡n Ä‘á»ƒ xuáº¥t." });
+      return res.status(404).json({ message: "Khách hàng không có dữ liệu hóa đơn để xuất." });
     }
 
     const dataForExcel = invoices.map((invoice, index) => ({
@@ -377,16 +377,16 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
     }));
 
     const buffer = await makeWorkbookBuffer(
-      "Danh Sach Hoa Don",
+      "Danh sách hóa đơn",
       [
         { header: "STT", key: "stt", width: 5 },
-        { header: "MĂ£ khĂ¡ch hĂ ng", key: "maKhachHang", width: 17 },
-        { header: "Ká»³ nĂ y", key: "kyNay", width: 15 },
-        { header: "Ká»³ trÆ°á»›c", key: "kyTruoc", width: 12 },
-        { header: "Tá»•ng tiá»n", key: "tongTien", width: 15 },
-        { header: "TĂªn", key: "ten", width: 35 },
-        { header: "Äá»‹a chá»‰", key: "diaChi", width: 65 },
-        { header: "Tráº¡m", key: "tram", width: 12 },
+        { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
+        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ trước", key: "kyTruoc", width: 12 },
+        { header: "Tổng tiền", key: "tongTien", width: 15 },
+        { header: "Tên", key: "ten", width: 35 },
+        { header: "Địa chỉ", key: "diaChi", width: 65 },
+        { header: "Trạm", key: "tram", width: 12 },
       ],
       dataForExcel
     );
@@ -397,7 +397,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
     return res.send(buffer);
   } catch (error) {
     console.error("exportCollectedInvoicesByDate error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
@@ -405,7 +405,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
   try {
     const { assignedUserId: userID, sortField, sortDirection } = req.query as any;
     if (!userID || String(userID).trim() === "") {
-      return res.status(400).json({ message: "KhĂ´ng cĂ³ dá»¯ liá»‡u ngÆ°á»i dĂ¹ng." });
+      return res.status(400).json({ message: "Khách hàng không có dữ liệu người dùng." });
     }
 
     // Dynamic sort for user export
@@ -423,7 +423,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       .lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "KhĂ´ng cĂ³ dá»¯ liá»‡u hĂ³a Ä‘Æ¡n Ä‘á»ƒ xuáº¥t." });
+      return res.status(404).json({ message: "Khách hàng không tìm thấy dữ liệu hóa đơn nào với bộ lọc này." });
     }
 
     const userInfo = invoices[0].assignedTo as IUser | undefined;
@@ -448,13 +448,13 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       "Danh Sach Hoa Don",
       [
         { header: "STT", key: "stt", width: 5 },
-        { header: "MĂ£ khĂ¡ch hĂ ng", key: "maKhachHang", width: 17 },
-        { header: "Ká»³ nĂ y", key: "kyNay", width: 15 },
-        { header: "Ká»³ trÆ°á»›c", key: "kyTruoc", width: 12 },
-        { header: "Tá»•ng tiá»n", key: "tongTien", width: 15 },
-        { header: "TĂªn", key: "ten", width: 35 },
-        { header: "Äá»‹a chá»‰", key: "diaChi", width: 65 },
-        { header: "Tráº¡m", key: "tram", width: 12 },
+        { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
+        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ trước", key: "kyTruoc", width: 12 },
+        { header: "Tổng tiền", key: "tongTien", width: 15 },
+        { header: "Tên", key: "ten", width: 35 },
+        { header: "Địa chỉ", key: "diaChi", width: 65 },
+        { header: "Trạm", key: "tram", width: 12 },
       ],
       dataForExcel
     );
@@ -465,7 +465,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
     return res.send(buffer);
   } catch (error) {
     console.error("exportExcelByUser error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
@@ -473,7 +473,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
   try {
     const { fromDate, toDate, isClosed, status, userIds, sortField, sortDirection } = req.query as any;
     if (!fromDate || !toDate) {
-      return res.status(400).json({ message: "Vui lĂ²ng chá»n khoáº£ng thá»i gian (Tá»« ngĂ y - Äáº¿n ngĂ y)." });
+      return res.status(400).json({ message: "Vui lòng chọn khoảng thời gian (Từ ngày - Đến ngày)." });
     }
 
     const startOfDay = dayjs.tz(String(fromDate), "Asia/Ho_Chi_Minh").startOf("day").toDate();
@@ -520,7 +520,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       .lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "KhĂ´ng tĂ¬m tháº¥y dá»¯ liá»‡u hĂ³a Ä‘Æ¡n nĂ o vá»›i bá»™ lá»c nĂ y." });
+      return res.status(404).json({ message: "Khách hàng không tìm thấy dữ liệu hóa đơn nào với bộ lọc này." });
     }
 
     const rows = invoices.map((invoice, index) => ({
@@ -532,23 +532,23 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       ten: invoice.customerName || "",
       diaChi: invoice.customerAddress || "",
       tram: invoice.recordBookCode || "",
-      nguoiPhuTrach: (invoice.assignedTo as { fullName?: string } | undefined)?.fullName || "ChÆ°a phĂ¢n cĂ´ng",
-      daThu: invoice.collectionStatus === "collected" ? "ÄĂ£ thu" : "ChÆ°a thu",
+      nguoiPhuTrach: (invoice.assignedTo as { fullName?: string } | undefined)?.fullName || "Chưa phân công",
+      daThu: invoice.collectionStatus === "collected" ? "Đã thu" : "Chưa thu",
     }));
 
     const buffer = await makeWorkbookBuffer(
       "Danh Sach Hoa Don",
       [
         { header: "STT", key: "stt", width: 5 },
-        { header: "MĂ£ khĂ¡ch hĂ ng", key: "maKhachHang", width: 15 },
-        { header: "Ká»³ nĂ y", key: "kyNay", width: 12 },
-        { header: "Ká»³ trÆ°á»›c", key: "kyTruoc", width: 12 },
-        { header: "Tá»•ng tiá»n", key: "tongTien", width: 14 },
-        { header: "TĂªn", key: "ten", width: 25 },
-        { header: "Äá»‹a chá»‰", key: "diaChi", width: 35 },
-        { header: "Tráº¡m", key: "tram", width: 10 },
-        { header: "NgÆ°á»i phá»¥ trĂ¡ch", key: "nguoiPhuTrach", width: 20 },
-        { header: "ÄĂ£ thu", key: "daThu", width: 10 },
+        { header: "Mã khách hàng", key: "maKhachHang", width: 15 },
+        { header: "Kỳ nay", key: "kyNay", width: 12 },
+        { header: "Kỳ trước", key: "kyTruoc", width: 12 },
+        { header: "Tổng tiền", key: "tongTien", width: 14 },
+        { header: "Tên", key: "ten", width: 25 },
+        { header: "Địa chỉ", key: "diaChi", width: 35 },
+        { header: "Trạm", key: "tram", width: 10 },
+        { header: "Người phụ trách", key: "nguoiPhuTrach", width: 20 },
+        { header: "Đã thu", key: "daThu", width: 10 },
       ],
       rows
     );
@@ -573,7 +573,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     return res.send(buffer);
   } catch (error) {
     console.error("exportExcelCollected error:", error);
-    return res.status(500).json({ message: "Lá»—i há»‡ thá»‘ng." });
+    return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
 
