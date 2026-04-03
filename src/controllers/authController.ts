@@ -27,17 +27,17 @@ export const login = async (req: Request, res: Response) => {
       username: { $regex: `^${escapeRegex(normalizedUsername)}$`, $options: "i" },
     });
     if (!user) {
-      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
+      return res.status(401).json({ message: "Sai tên đăng nhập hoặc mật khẩu." });
     }
 
     if (typeof user.password !== "string" || !isBcryptHash(user.password)) {
       console.error("Login blocked: invalid password hash format", { username: user.username });
-      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
+      return res.status(401).json({ message: "Sai tên đăng nhập hoặc mật khẩu." });
     }
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
-      return res.status(401).json({ message: "Sai ten dang nhap hoac mat khau." });
+      return res.status(401).json({ message: "Sai tên đăng nhập hoặc mật khẩu." });
     }
 
     let jwtSecret: string;
@@ -75,8 +75,8 @@ export const login = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Loi khi dang nhap:", error);
-    return res.status(500).json({ message: "Da co loi xay ra tren may chu." });
+    console.error("Lỗi khi đăng nhập:", error);
+    return res.status(500).json({ message: "Đã có lỗi trên máy chủ." });
   }
 };
 
@@ -110,7 +110,7 @@ export const register = async (req: Request, res: Response) => {
 
     // Chi admin moi duoc quyen tao user con
     if (!req.user || req.user.role !== "admin") {
-      return res.status(403).json({ message: "Chi admin moi co quyen tao tai khoan moi." });
+      return res.status(403).json({ message: "Chỉ có admin mới có quyền tạo tài khoản mới" });
     }
     createdBy = req.user._id;
 

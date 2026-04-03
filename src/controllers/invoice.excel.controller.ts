@@ -292,7 +292,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       .lean();
 
     if (!invoices.length) {
-      return res.status(404).json({ message: "KhĂ´ng tĂ¬m tháº¥y dá»¯ liá»‡u phĂ¹ há»£p vá»›i bá»™ lá»c." });
+      return res.status(404).json({ message: "Không tìm thấy dữ liệu phù hợp với bộ lọc." });
     }
 
     const dataForExcel = invoices.map((invoice, index) => ({
@@ -576,6 +576,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Lỗi hệ thống." });
   }
 };
+
 
 
 
