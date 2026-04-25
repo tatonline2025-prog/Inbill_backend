@@ -44,6 +44,8 @@ const isAllowedOrigin = (origin: string): boolean => {
   if (allowedOrigins.includes(origin)) return true;
   // Allow any Vercel preview/production URL
   if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+  // Allow any dvtienich.vn subdomain
+  if (/^https:\/\/[a-z0-9-]+\.dvtienich\.vn$/i.test(origin)) return true;
   return false;
 };
 
