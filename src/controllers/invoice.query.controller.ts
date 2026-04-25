@@ -1473,6 +1473,76 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /api/invoices/daily-summary?days=31
+ * Trả về 31 ngày gần nhất (mới nhất đầu danh sách), mỗi ngày gồm số HĐ đã thu, tổng tiền, danh sách người phụ trách.
+ */
+export const getDailyCollectionSummary = async (req: Request, res: Response) => {
+  try {
+    const TZ = "Asia/Ho_Chi_Minh";
+    const days = Math.max(1, Math.min(parseInt(String(req.query.days || "31"), 10) || 31, 365));
+
+    const todayEnd = dayjs().tz(TZ).endOf("day");
+    const startDay = todayEnd.subtract(days - 1, "day").startOf("day");
+
+    const match: any = {
+      collectionStatus: "collected",
+      collectionDate: { $gte: startDay.toDate(), $lte: todayEnd.toDate() },
+    };
+
+    if (req.user?.role === "user") {
+      match.assignedTo = req.user._id;
+    }
+
+    const rows = await Invoice.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%d/%m/%Y", date: "$collectionDate", timezone: TZ } },
+          totalCount: { $sum: 1 },
+          totalAmount: { $sum: { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } } },
+          assignedIds: { $addToSet: "$assignedTo" },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignedIds",
+          foreignField: "_id",
+          as: "users",
+          pipeline: [{ $project: { fullName: 1, email: 1 } }],
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          date: "$_id",
+          totalCount: 1,
+          totalAmount: 1,
+          assignedUsers: { $map: { input: "$users", as: "u", in: { $ifNull: ["$$u.fullName", "$$u.email"] } } },
+        },
+      },
+    ]);
+
+    const map = new Map<string, { totalCount: number; totalAmount: number; assignedUsers: string[] }>();
+    for (const r of rows) {
+      map.set(r.date, { totalCount: r.totalCount || 0, totalAmount: r.totalAmount || 0, assignedUsers: r.assignedUsers || [] });
+    }
+
+    const result: Array<{ date: string; totalCount: number; totalAmount: number; assignedUsers: string[] }> = [];
+    for (let i = 0; i < days; i++) {
+      const d = todayEnd.subtract(i, "day").format("DD/MM/YYYY");
+      const v = map.get(d);
+      result.push({ date: d, totalCount: v?.totalCount ?? 0, totalAmount: v?.totalAmount ?? 0, assignedUsers: v?.assignedUsers ?? [] });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in getDailyCollectionSummary:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const getCollectionSummary = async (req: Request, res: Response) => {
   try {
     const { assignedUserId } = req.query;

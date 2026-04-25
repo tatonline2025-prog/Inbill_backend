@@ -31,6 +31,7 @@ import {
   fetchTop3StationsByUser,
   fetchUserInvoices,
   getCollectionSummary,
+  getDailyCollectionSummary,
   getInvoiceSummary,
   getLatestBillingPeriod,
   searchInvoice,
@@ -70,6 +71,7 @@ router.post(
 
 router.get("/summary", authenticate, getInvoiceSummary);
 router.get("/collectsummary", authenticate, getCollectionSummary);
+router.get("/daily-summary", authenticate, getDailyCollectionSummary);
 router.get("/search", authenticate, searchInvoice);
 router.get("/search-by-station", authenticate, searchInvoicesByStationCode);
 
