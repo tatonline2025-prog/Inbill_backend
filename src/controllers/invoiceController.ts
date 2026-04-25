@@ -46,19 +46,23 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     if (field === "printStatus") {
       invoice.printStatus = invoice.printStatus === "printed" ? "not_printed" : "printed";
     } else if (field === "collectionStatus") {
+      const isAdmin = req.user?.role === "admin";
       if (invoice.collectionStatus === "collected") {
-        // Nếu đang là "đã thu" -> chuyển thành "chưa thu"
+        // Chuyển "đã thu" -> "chưa thu": chỉ bỏ cờ thu, GIỮ nguyên người phụ trách
         invoice.collectionStatus = "not_collected";
-        invoice.collectionDate = null; // Xóa ngày thu
-        invoice.assignedTo = null; // ❌ Bỏ gán người thu
+        invoice.collectionDate = null;
+        // KHÔNG xóa assignedTo nữa
       } else {
-        // Nếu đang là "chưa thu" -> chuyển thành "đã thu"
+        // Chuyển "chưa thu" -> "đã thu"
         invoice.collectionStatus = "collected";
-        invoice.collectionDate = new Date(); // Ghi ngày thu hiện tại
+        invoice.collectionDate = new Date();
         if (typeof req.user?.province === "string" && req.user.province.trim() !== "") {
           invoice.province = req.user.province;
         }
-        invoice.assignedTo = req.user?._id as unknown as mongoose.Types.ObjectId;
+        // Admin không trở thành người phụ trách; user thường đã thu sau cùng sẽ là người phụ trách
+        if (!isAdmin) {
+          invoice.assignedTo = req.user?._id as unknown as mongoose.Types.ObjectId;
+        }
       }
     }
 
@@ -169,7 +173,14 @@ export const createInvoice = async (req: Request, res: Response) => {
       return res.status(409).json({ message: "Hoá đơn này của kỳ đã tồn tại." });
     }
 
-    const finalAssignedTo = assignedTo || req.user?._id;
+    // Admin không tự động trở thành người phụ trách khi tạo hóa đơn
+    const isAdmin = req.user?.role === "admin";
+    let finalAssignedTo: any = null;
+    if (assignedTo) {
+      finalAssignedTo = assignedTo;
+    } else if (!isAdmin) {
+      finalAssignedTo = req.user?._id;
+    }
 
     const currentAmountStr = normalizeMoneyString(currentAmount);
     const previousAmountStr = normalizeMoneyString(previousAmount);
@@ -252,7 +263,19 @@ export const updateInvoice = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Không tìm thấy hoá đơn." });
     }
 
-    const finalAssignedTo = assignedTo || req.user?._id;
+    // Xác định người phụ trách:
+    // - Nếu request gửi assignedTo tường minh -> dùng giá trị đó.
+    // - Ngược lại, nếu user hiện tại không phải admin -> gán cho user hiện tại.
+    // - Nếu user hiện tại là admin -> GIỮ nguyên người phụ trách hiện tại.
+    const isAdmin = user.role === "admin";
+    let finalAssignedTo: any;
+    if (assignedTo !== undefined && assignedTo !== null && assignedTo !== "") {
+      finalAssignedTo = assignedTo;
+    } else if (!isAdmin) {
+      finalAssignedTo = req.user?._id;
+    } else {
+      finalAssignedTo = invoice.assignedTo;
+    }
 
     // Cập nhật hoá đơn
     invoice.customerName = customerName;
