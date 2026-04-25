@@ -39,6 +39,8 @@ const invoiceSchema = new mongoose.Schema(
     // 🗓 Ngày phát hành & ngày thu tiền
     issueDate: { type: Date, default: Date.now },
     collectionDate: { type: Date },
+    // Đánh dấu khi Admin chỉnh ngày thu thủ công (đơn bổ sung) → FE chỉ hiển thị ngày, không hiện giờ
+    collectionDateAdminEdited: { type: Boolean, default: false },
 
     // 👥 Người xử lý
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -94,6 +96,7 @@ export interface IInvoice {
   printStatus: "printed" | "not_printed";
   issueDate: Date;
   collectionDate?: Date | null;
+  collectionDateAdminEdited?: boolean;
   assignedTo?: mongoose.Types.ObjectId | IUser | null;
   uploadedBy?: mongoose.Types.ObjectId | IUser | null;
   uploadFileId?: mongoose.Types.ObjectId | null;

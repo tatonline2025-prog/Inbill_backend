@@ -8,6 +8,7 @@ import {
   quickAddInvoice,
   toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
+  updateCollectionDateByAdmin,
   updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
@@ -106,5 +107,6 @@ router.delete("/delete/:invoiceId", authenticate, deleteInvoice);
 router.put("/update/:invoiceId", authenticate, updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);
+router.patch("/:invoiceId/collection-date", authenticate, authorize(["admin"]), updateCollectionDateByAdmin);
 
 export default router;

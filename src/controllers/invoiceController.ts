@@ -48,14 +48,13 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     } else if (field === "collectionStatus") {
       const isAdmin = req.user?.role === "admin";
       if (invoice.collectionStatus === "collected") {
-        // Chuyển "đã thu" -> "chưa thu": chỉ bỏ cờ thu, GIỮ nguyên người phụ trách
         invoice.collectionStatus = "not_collected";
         invoice.collectionDate = null;
-        // KHÔNG xóa assignedTo nữa
+        invoice.collectionDateAdminEdited = false;
       } else {
-        // Chuyển "chưa thu" -> "đã thu"
         invoice.collectionStatus = "collected";
         invoice.collectionDate = new Date();
+        invoice.collectionDateAdminEdited = false;
         if (typeof req.user?.province === "string" && req.user.province.trim() !== "") {
           invoice.province = req.user.province;
         }
@@ -72,6 +71,44 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+/**
+ * Admin set/đổi ngày thu thủ công cho hóa đơn (đơn bổ sung).
+ * PATCH /api/invoices/:invoiceId/collection-date  body: { date: "YYYY-MM-DD" | null }
+ */
+export const updateCollectionDateByAdmin = async (req: Request, res: Response) => {
+  try {
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Chỉ admin được phép thay đổi ngày thu." });
+    }
+
+    const invoiceId = req.params.invoiceId;
+    const { date } = req.body as { date?: string | null };
+
+    const invoice = await Invoice.findById(invoiceId);
+    if (!invoice) return res.status(404).json({ message: "Hóa đơn không tồn tại" });
+
+    if (!date) {
+      invoice.collectionStatus = "not_collected";
+      invoice.collectionDate = null;
+      invoice.collectionDateAdminEdited = false;
+    } else {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+      if (!m) return res.status(400).json({ message: "Ngày không hợp lệ (YYYY-MM-DD)." });
+      const d = new Date(`${date}T12:00:00.000Z`);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Ngày không hợp lệ." });
+      invoice.collectionStatus = "collected";
+      invoice.collectionDate = d;
+      invoice.collectionDateAdminEdited = true;
+    }
+
+    await invoice.save();
+    return res.status(200).json(invoice);
+  } catch (err) {
+    console.error("updateCollectionDateByAdmin error:", err);
+    return res.status(500).json({ message: "Lỗi server" });
   }
 };
 
