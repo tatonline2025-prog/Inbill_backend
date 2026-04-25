@@ -198,9 +198,11 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 
     const rows = parseWorksheetRows(worksheet);
     const batchId = Date.now();
+    const assignedUserId = String(req.body.assignedUserId || "").trim() || undefined;
     const docs = rows
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
+          assignedTo: assignedUserId,
           province: String(req.body.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
           batchId
