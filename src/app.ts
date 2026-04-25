@@ -40,6 +40,13 @@ const allowedOrigins = [
   "https://api.dvtienich.vn",
 ];
 
+const isAllowedOrigin = (origin: string): boolean => {
+  if (allowedOrigins.includes(origin)) return true;
+  // Allow any Vercel preview/production URL
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+  return false;
+};
+
 const app = express();
 
 // CORS middleware với cấu hình mạnh hơn
@@ -47,7 +54,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
 
   // Cho phép origin nếu có trong danh sách
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else if (!origin) {
     // Fallback cho request không có origin (như Postman, mobile app)
