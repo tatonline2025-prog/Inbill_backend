@@ -1510,7 +1510,10 @@ export const getDailyCollectionSummary = async (req: Request, res: Response) => 
           localField: "assignedIds",
           foreignField: "_id",
           as: "users",
-          pipeline: [{ $project: { fullName: 1, email: 1 } }],
+          pipeline: [
+            { $project: { fullName: 1, email: 1 } },
+            { $sort: { _id: 1 } },
+          ],
         },
       },
       {
