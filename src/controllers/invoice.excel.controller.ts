@@ -487,7 +487,14 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       match.collectionStatus = "not_collected";
       match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
     } else {
-      match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
+      // Tất cả: lấy cả đã thu và chưa thu trong khoảng thời gian
+      match.$or = [
+        { collectionDate: { $gte: startOfDay, $lte: endOfDay } },
+        {
+          collectionStatus: "not_collected",
+          updatedAt: { $gte: startOfDay, $lte: endOfDay },
+        },
+      ];
     }
 
     if (typeof userIds === "string" && userIds.trim()) {
@@ -506,7 +513,12 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     }
 
     // Dynamic sort for collected export
-    const defaultSortCollectedExp: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
+    // Mặc định: status=paid → sắp xếp theo collectionDate giảm dần (mới nhất lên đầu)
+    //          status khác → sắp xếp theo thứ tự import gốc
+    const defaultSortCollectedExp: any =
+      status === "paid"
+        ? { collectionDate: -1, _id: 1 }
+        : { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
     let sortObjCollectedExp: any = defaultSortCollectedExp;
     
     if (sortField && sortDirection !== "none") {
@@ -534,6 +546,9 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       tram: invoice.recordBookCode || "",
       nguoiPhuTrach: (invoice.assignedTo as { fullName?: string } | undefined)?.fullName || "Chưa phân công",
       daThu: invoice.collectionStatus === "collected" ? "Đã thu" : "Chưa thu",
+      thoiDiemThu: invoice.collectionDate
+        ? dayjs(invoice.collectionDate).tz("Asia/Ho_Chi_Minh").format("DD/MM/YYYY HH:mm")
+        : "",
     }));
 
     const buffer = await makeWorkbookBuffer(
@@ -549,6 +564,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
         { header: "Trạm", key: "tram", width: 10 },
         { header: "Người phụ trách", key: "nguoiPhuTrach", width: 20 },
         { header: "Đã thu", key: "daThu", width: 10 },
+        { header: "Thời điểm thu", key: "thoiDiemThu", width: 18 },
       ],
       rows
     );
@@ -563,6 +579,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     let filePrefix = "Tong-Hop-Hoa-Don";
     if (status === "paid") filePrefix = "DS-Hoa-Don-Da-Thu";
     if (status === "unpaid") filePrefix = "DS-Chua-Thu";
+    if (status === "all") filePrefix = "DS-Tat-Ca";
     if (isClosed === "true") filePrefix += "-Da-Dong-Cuoc";
     if (isClosed === "false") filePrefix += "-Chua-Dong-Cuoc";
 
