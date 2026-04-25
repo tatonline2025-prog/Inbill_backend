@@ -486,6 +486,10 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     } else if (status === "unpaid") {
       match.collectionStatus = "not_collected";
       match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
+    } else if (status === "closed") {
+      // Đã đóng cước trong khoảng thời gian
+      match.isPaid = true;
+      match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
     } else {
       // Tất cả: lấy cả đã thu và chưa thu trong khoảng thời gian
       match.$or = [
@@ -547,7 +551,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       nguoiPhuTrach: (invoice.assignedTo as { fullName?: string } | undefined)?.fullName || "Chưa phân công",
       daThu: invoice.collectionStatus === "collected" ? "Đã thu" : "Chưa thu",
       thoiDiemThu: invoice.collectionDate
-        ? dayjs(invoice.collectionDate).tz("Asia/Ho_Chi_Minh").format("DD/MM/YYYY HH:mm")
+        ? dayjs(invoice.collectionDate).tz("Asia/Ho_Chi_Minh").format("HH:mm DD/MM/YYYY")
         : "",
     }));
 
@@ -579,6 +583,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     let filePrefix = "Tong-Hop-Hoa-Don";
     if (status === "paid") filePrefix = "DS-Hoa-Don-Da-Thu";
     if (status === "unpaid") filePrefix = "DS-Chua-Thu";
+    if (status === "closed") filePrefix = "DS-Da-Dong-Cuoc";
     if (status === "all") filePrefix = "DS-Tat-Ca";
     if (isClosed === "true") filePrefix += "-Da-Dong-Cuoc";
     if (isClosed === "false") filePrefix += "-Chua-Dong-Cuoc";
