@@ -354,6 +354,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       sortField,
       sortDirection,
       isPaid,
+      onlyDuplicates,
     } = req.query;
 
     const hasFilter = !!((printStatus && printStatus !== "all") || (collectionStatus && collectionStatus !== "all"));
@@ -451,6 +452,18 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         if (!match.$and) match.$and = [];
         match.$and.push(searchConditions[0]);
       }
+    }
+
+    // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
+    if (onlyDuplicates === "true" || onlyDuplicates === true) {
+      const dupAgg = await Invoice.aggregate([
+        { $match: { invoiceNumber: { $nin: [null, ""] } } },
+        { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+        { $match: { c: { $gt: 1 } } },
+        { $project: { _id: 1 } },
+      ]);
+      const dupNums = dupAgg.map((d: any) => d._id);
+      match.invoiceNumber = { $in: dupNums };
     }
 
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
