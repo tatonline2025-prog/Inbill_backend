@@ -11,6 +11,7 @@ import {
   updateCollectionDateByAdmin,
   bulkUpdateInvoices,
   syncDuplicateInvoiceInfo,
+  cleanupRedundantDuplicates,
   updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
@@ -112,5 +113,6 @@ router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus
 router.patch("/:invoiceId/collection-date", authenticate, authorize(["admin"]), updateCollectionDateByAdmin);
 router.patch("/bulk-update", authenticate, bulkUpdateInvoices);
 router.post("/sync-duplicates", authenticate, authorize(["admin"]), syncDuplicateInvoiceInfo);
+router.post("/cleanup-duplicates", authenticate, authorize(["admin"]), cleanupRedundantDuplicates);
 
 export default router;

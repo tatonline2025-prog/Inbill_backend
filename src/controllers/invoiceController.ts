@@ -265,6 +265,90 @@ export const syncDuplicateInvoiceInfo = async (_req: Request, res: Response) => 
   }
 };
 
+/**
+ * Dọn các hóa đơn TRÙNG mã KH đã đồng bộ giống nhau hết:
+ * Trong nhóm cùng (invoiceNumber, billing_period), nếu nội dung (tên, địa chỉ, mã trạm, số tiền, NPT) giống hệt nhau,
+ * thì xóa các bản ghi CHƯA tương tác (collectionStatus=not_collected, isPaid≠true, printStatus≠printed, không có collectionDate),
+ * giữ lại bản ghi có ít nhất một tương tác. Nếu cả nhóm đều chưa tương tác → giữ 1 bản.
+ */
+export const cleanupRedundantDuplicates = async (_req: Request, res: Response) => {
+  try {
+    const isUntouched = (inv: any) =>
+      (!inv.collectionStatus || inv.collectionStatus === "not_collected") &&
+      inv.isPaid !== true &&
+      (!inv.printStatus || inv.printStatus !== "printed") &&
+      (inv.collectionDate === null || inv.collectionDate === undefined);
+
+    // Lấy nhóm có invoiceNumber + billing_period trùng (>=2 bản ghi)
+    const dupAgg = await Invoice.aggregate([
+      { $match: { invoiceNumber: { $nin: [null, ""] } } },
+      { $group: { _id: { invoiceNumber: "$invoiceNumber", billing_period: "$billing_period" }, c: { $sum: 1 } } },
+      { $match: { c: { $gt: 1 } } },
+    ]);
+    if (dupAgg.length === 0) {
+      return res.status(200).json({ message: "Không có nhóm nào để dọn.", deleted: 0 });
+    }
+
+    const orFilter = dupAgg.map((d: any) => ({
+      invoiceNumber: d._id.invoiceNumber,
+      billing_period: d._id.billing_period,
+    }));
+    const all = await Invoice.find({ $or: orFilter }).lean();
+
+    // Group theo (invoiceNumber + billing_period)
+    const groups = new Map<string, any[]>();
+    all.forEach((inv: any) => {
+      const k = `${inv.invoiceNumber}__${inv.billing_period}`;
+      const arr = groups.get(k) || [];
+      arr.push(inv);
+      groups.set(k, arr);
+    });
+
+    const idsToDelete: any[] = [];
+    const norm = (v: any) => (v === null || v === undefined ? "" : String(v).trim());
+    groups.forEach((rows) => {
+      // Chỉ xét nhóm có nội dung giống hệt nhau
+      const sig = (r: any) =>
+        [
+          norm(r.customerName),
+          norm(r.customerAddress),
+          norm(r.recordBookCode),
+          norm(r.currentAmount),
+          norm(r.previousAmount),
+          norm(r.totalAmount),
+          norm(r.assignedTo),
+          norm(r.province),
+        ].join("||");
+      const first = sig(rows[0]);
+      const allSame = rows.every((r) => sig(r) === first);
+      if (!allSame) return;
+
+      // Phân loại
+      const touched = rows.filter((r) => !isUntouched(r));
+      const untouched = rows.filter((r) => isUntouched(r));
+      if (touched.length > 0) {
+        // Xóa toàn bộ untouched
+        untouched.forEach((r) => idsToDelete.push(r._id));
+      } else {
+        // Cả nhóm chưa tương tác → giữ 1, xóa phần còn lại
+        untouched.slice(1).forEach((r) => idsToDelete.push(r._id));
+      }
+    });
+
+    if (idsToDelete.length === 0) {
+      return res.status(200).json({ message: "Không có hóa đơn nào cần xóa.", deleted: 0 });
+    }
+    const result = await Invoice.deleteMany({ _id: { $in: idsToDelete } });
+    return res.status(200).json({
+      message: `Đã xóa ${result.deletedCount ?? 0} hóa đơn trùng (giống hệt và chưa tương tác).`,
+      deleted: result.deletedCount ?? 0,
+    });
+  } catch (err) {
+    console.error("cleanupRedundantDuplicates error:", err);
+    return res.status(500).json({ message: "Lỗi server khi dọn mã trùng." });
+  }
+};
+
 export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => {  try {
     const invoiceId = req.params.invoiceId;
 
