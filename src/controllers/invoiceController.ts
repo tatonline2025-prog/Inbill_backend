@@ -279,15 +279,6 @@ export const createInvoice = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
-    // ✅ Kiểm tra hoá đơn trùng kỳ và số
-    const existInvoice = await Invoice.findOne({
-      invoiceNumber,
-      billing_period,
-    });
-    if (existInvoice) {
-      return res.status(409).json({ message: "Hoá đơn này của kỳ đã tồn tại." });
-    }
-
     // Admin không tự động trở thành người phụ trách khi tạo hóa đơn
     const isAdmin = req.user?.role === "admin";
     let finalAssignedTo: any = null;
@@ -299,6 +290,29 @@ export const createInvoice = async (req: Request, res: Response) => {
 
     const currentAmountStr = normalizeMoneyString(currentAmount);
     const previousAmountStr = normalizeMoneyString(previousAmount);
+    const newTotal = String(Number(currentAmountStr) + Number(previousAmountStr));
+
+    // ✅ Trùng khóa gộp (Mã KH + Kỳ TT + Người phụ trách) → ĐÈ thông tin nhưng GIỮ trạng thái thu/in/đóng cước.
+    const existInvoice = await Invoice.findOne({
+      invoiceNumber,
+      billing_period,
+      assignedTo: finalAssignedTo,
+    });
+    if (existInvoice) {
+      existInvoice.customerName = customerName;
+      existInvoice.customerPhone = customerPhone || existInvoice.customerPhone || "";
+      existInvoice.customerAddress = customerAddress || existInvoice.customerAddress || "";
+      existInvoice.recordBookCode = recordBookCode ?? existInvoice.recordBookCode;
+      existInvoice.currentAmount = currentAmountStr;
+      existInvoice.previousAmount = previousAmountStr;
+      existInvoice.totalAmount = newTotal;
+      // GIỮ NGUYÊN: collectionStatus, collectionDate, collectionDateAdminEdited, isPaid, printStatus
+      await existInvoice.save();
+      return res.status(200).json({
+        message: "Hóa đơn cùng kỳ đã tồn tại → đã cập nhật thông tin (giữ trạng thái thu/in/đóng cước).",
+        updated: true,
+      });
+    }
 
     // ✅ Tạo bản ghi mới
     const newInvoice = new Invoice({

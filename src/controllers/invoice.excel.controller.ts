@@ -131,6 +131,54 @@ const makeWorkbookBuffer = async (
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
 
+/**
+ * Upsert hóa đơn theo khóa gộp (invoiceNumber, billing_period, assignedTo).
+ * - Nếu khớp đủ 3 trường → cập nhật thông tin (KHÔNG động vào trạng thái thu/in/đóng cước).
+ * - Nếu không khớp → chèn hóa đơn mới.
+ */
+const upsertInvoiceDocs = async (
+  docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>>
+) => {
+  if (!docs.length) return { inserted: 0, modified: 0 };
+  const ops = docs.map((doc) => {
+    const filter = {
+      invoiceNumber: doc.invoiceNumber,
+      billing_period: doc.billing_period,
+      assignedTo: doc.assignedTo ?? null,
+    };
+    // Trường được cập nhật khi trùng (đè thông tin mới)
+    const $set: Record<string, unknown> = {
+      customerName: doc.customerName,
+      customerAddress: doc.customerAddress,
+      recordBookCode: doc.recordBookCode,
+      currentAmount: doc.currentAmount,
+      previousAmount: doc.previousAmount,
+      totalAmount: doc.totalAmount,
+      province: doc.province,
+      excelRowIndex: doc.excelRowIndex,
+      sortPriority: doc.sortPriority,
+      excelOrder: doc.excelOrder,
+      issueDate: doc.issueDate,
+    };
+    // Trường chỉ set khi tạo mới (giữ nguyên trạng thái thu/in/đóng cước khi trùng)
+    const $setOnInsert: Record<string, unknown> = {
+      createdAt: new Date(),
+    };
+    return {
+      updateOne: {
+        filter,
+        update: { $set, $setOnInsert },
+        upsert: true,
+      },
+    };
+  });
+  const result = await Invoice.bulkWrite(ops, { ordered: false });
+  return {
+    inserted: result.upsertedCount ?? 0,
+    modified: result.modifiedCount ?? 0,
+  };
+};
+
 export const previewExcel = async (req: Request, res: Response) => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -172,10 +220,11 @@ export const previewExcel = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await Invoice.insertMany(docs, { ordered: true });
+    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
     return res.status(200).json({
-      message: "Đã thêm hóa đơn thành công.",
-      inserted: inserted.length,
+      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      inserted: inserted.inserted,
+      modified: inserted.modified,
     });
   } catch (error) {
     console.error("previewExcel error:", error);
@@ -214,10 +263,11 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await Invoice.insertMany(docs, { ordered: true });
+    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
     return res.status(200).json({
-      message: "Đã thêm hóa đơn thành công.",
-      inserted: inserted.length,
+      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      inserted: inserted.inserted,
+      modified: inserted.modified,
     });
   } catch (error) {
     console.error("previewExcelProvince error:", error);
