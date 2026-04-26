@@ -695,6 +695,13 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       assignedTo: new mongoose.Types.ObjectId(targetUserId as string),
     };
 
+    // 🔎 Khi NPT đang TÌM KIẾM (theo Mã KH / Mã trạm) → bỏ ràng buộc assignedTo
+    // để có thể tra cứu hóa đơn của KH bất kỳ (kể cả thuộc NPT khác hoặc trong danh sách tổng).
+    const hasSearch = !!((customerCode && String(customerCode).trim()) || (stationCode && String(stationCode).trim()));
+    if (hasSearch) {
+      delete match.assignedTo;
+    }
+
     // User page: chỉ lọc "đã đóng cước" khi client gửi isPaid=true.
     // Nếu isPaid=false hoặc không có param thì không áp điều kiện, để hiển thị đầy đủ dữ liệu được giao.
     const isPaidParam = String(isPaid ?? "").toLowerCase();
@@ -787,9 +794,37 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
     const data = facetResult.data;
     const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0 };
 
+    // 🔎 Khi đang TÌM KIẾM, kèm thêm KH chỉ có trong "Danh sách tổng" (CustomerMaster)
+    // — tức KH đã thu xong / chưa có hóa đơn kỳ hiện tại.
+    let masterMatches: any[] = [];
+    if (hasSearch) {
+      try {
+        const CustomerMaster = require("../models/customerMasterModel").default;
+        const masterMatch: any = {};
+        const masterOr: any[] = [];
+        if (customerCode && String(customerCode).trim()) {
+          masterOr.push({ invoiceNumber: new RegExp(String(customerCode).trim(), "i") });
+          masterOr.push({ customerName: new RegExp(String(customerCode).trim(), "i") });
+        }
+        if (stationCode && String(stationCode).trim()) {
+          masterOr.push({ recordBookCode: new RegExp(String(stationCode).trim(), "i") });
+        }
+        if (masterOr.length) masterMatch.$or = masterOr;
+        const seen = new Set(data.map((d: any) => String(d.invoiceNumber)));
+        const masters = await CustomerMaster.find(masterMatch)
+          .limit(50)
+          .populate("assignedTo", "fullName username")
+          .lean();
+        masterMatches = masters.filter((m: any) => !seen.has(String(m.invoiceNumber)));
+      } catch (e) {
+        console.error("master search err:", e);
+      }
+    }
+
     res.status(200).json({
       success: true,
       data,
+      masterMatches,
       summary: {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
