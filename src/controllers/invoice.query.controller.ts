@@ -454,16 +454,30 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       }
     }
 
-    // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
+    // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có (invoiceNumber + billing_period) trùng
+    // (cùng MKH + cùng kỳ TT mà có nhiều bản ghi → song song bất thường do khác NPT).
     if (onlyDuplicates === "true" || onlyDuplicates === true) {
       const dupAgg = await Invoice.aggregate([
         { $match: { invoiceNumber: { $nin: [null, ""] } } },
-        { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { invoiceNumber: "$invoiceNumber", billing_period: "$billing_period" },
+            c: { $sum: 1 },
+          },
+        },
         { $match: { c: { $gt: 1 } } },
-        { $project: { _id: 1 } },
       ]);
-      const dupNums = dupAgg.map((d: any) => d._id);
-      match.invoiceNumber = { $in: dupNums };
+      const dupOr = dupAgg.map((d: any) => ({
+        invoiceNumber: d._id.invoiceNumber,
+        billing_period: d._id.billing_period,
+      }));
+      if (dupOr.length === 0) {
+        // Không có bản ghi trùng → chặn hết kết quả
+        match.invoiceNumber = { $in: ["___no_match___"] };
+      } else {
+        if (!match.$and) match.$and = [];
+        match.$and.push({ $or: dupOr });
+      }
     }
 
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
@@ -614,12 +628,17 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
             },
           ],
 
-          // Luồng 3: Danh sách mã hóa đơn trùng (tồn tại nhiều bản ghi song song)
+          // Luồng 3: Danh sách mã hóa đơn trùng (cùng MKH + cùng kỳ TT, nhiều bản ghi)
           duplicates: [
             { $match: { invoiceNumber: { $nin: [null, ""] } } },
-            { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+            {
+              $group: {
+                _id: { invoiceNumber: "$invoiceNumber", billing_period: "$billing_period" },
+                c: { $sum: 1 },
+              },
+            },
             { $match: { c: { $gt: 1 } } },
-            { $project: { _id: 0, invoiceNumber: "$_id" } },
+            { $project: { _id: 0, invoiceNumber: "$_id.invoiceNumber" } },
           ],
         },
       },
