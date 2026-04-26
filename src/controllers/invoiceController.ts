@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
+import { upsertCustomerMasterFromInvoice } from "./customerMasterController";
 import mongoose from "mongoose";
 
 import dayjs from "dayjs";
@@ -503,6 +504,9 @@ export const createInvoice = async (req: Request, res: Response) => {
 
     await newInvoice.save();
 
+    // Đồng bộ vào danh sách tổng (không chặn flow chính)
+    try { await upsertCustomerMasterFromInvoice(newInvoice.toObject()); } catch (e) { console.error("upsert master (create) err:", e); }
+
     // ✅ Phản hồi chuẩn REST
     return res.status(201).json({
       message: "Tạo hoá đơn mới thành công.",
@@ -619,6 +623,9 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     if (!result) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn để xóa" });
     }
+
+    // Lưu vào danh sách tổng trước khi mất (không chặn)
+    try { await upsertCustomerMasterFromInvoice(result.toObject()); } catch (e) { console.error("upsert master (delete) err:", e); }
 
     return res.status(200).json({ message: "Đã xoá hóa đơn chỉ định" });
   } catch (error) {

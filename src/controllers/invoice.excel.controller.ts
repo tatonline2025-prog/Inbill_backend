@@ -7,6 +7,7 @@ import timezone from "dayjs/plugin/timezone";
 
 import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
+import { upsertManyCustomerMasters } from "./customerMasterController";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -180,6 +181,12 @@ const upsertInvoiceDocs = async (
     };
   });
   const result = await Invoice.bulkWrite(ops, { ordered: false });
+  // Đồng bộ vào danh sách tổng (CustomerMaster) - không chặn flow chính
+  try {
+    await upsertManyCustomerMasters(docs);
+  } catch (e) {
+    console.error("upsertManyCustomerMasters (excel) error:", e);
+  }
   return {
     inserted: result.upsertedCount ?? 0,
     modified: result.modifiedCount ?? 0,

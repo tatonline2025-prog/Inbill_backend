@@ -5,6 +5,7 @@ import path from "path";
 
 import Invoice from "./models/invoiceModel";
 import authRoute from "./routes/authRoute";
+import customerMasterRoute from "./routes/customerMasterRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
 import invoiceRoute from "./routes/invoiceRoutes";
 import sumRoute from "./routes/sumRoute";
@@ -104,6 +105,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoute);
 app.use("/api/user", userRoute);
 app.use("/api/invoices", invoiceRoute);
+app.use("/api/customers", customerMasterRoute);
 app.use("/api/invoiceslayout", invoiceRouteLayout);
 app.use("/api/transaction", transactionRoute);
 app.use("/api/v1/finance", sumRoute);

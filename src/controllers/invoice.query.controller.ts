@@ -466,6 +466,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.invoiceNumber = { $in: dupNums.length > 0 ? dupNums : ["___no_match___"] };
     }
 
+    // ✅ Mặc định ẨN hóa đơn có totalAmount = 0 / rỗng (chuyển sang Danh sách tổng).
+    // Có thể bypass bằng query ?includeZero=true.
+    const includeZero = String((req.query as any).includeZero || "") === "true";
+    if (!includeZero) {
+      if (!match.$and) match.$and = [];
+      match.$and.push({ totalAmount: { $nin: [null, "", "0", "0.0", "0.00", 0] } });
+    }
+
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
 
     let sortStage: any = {};
