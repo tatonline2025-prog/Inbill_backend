@@ -600,6 +600,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
               },
             },
           ],
+
+          // Luồng 3: Danh sách mã hóa đơn trùng (tồn tại nhiều bản ghi song song)
+          duplicates: [
+            { $match: { invoiceNumber: { $nin: [null, ""] } } },
+            { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+            { $match: { c: { $gt: 1 } } },
+            { $project: { _id: 0, invoiceNumber: "$_id" } },
+          ],
         },
       },
     ]);
@@ -611,6 +619,9 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       sumTotalAmount: 0,
       unassignedCount: 0,
     };
+    const duplicateInvoiceNumbers: string[] = (facetResult.duplicates || [])
+      .map((d: any) => d.invoiceNumber)
+      .filter(Boolean);
 
     res.status(200).json({
       success: true,
@@ -620,6 +631,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         totalAmount: summaryData.sumTotalAmount,
         unassignedInvoices: summaryData.unassignedCount,
       },
+      duplicateInvoiceNumbers,
       pagination: {
         currentPage: page,
         invoicesPerPage: limit,
