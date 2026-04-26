@@ -455,7 +455,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
-    if (onlyDuplicates === "true" || onlyDuplicates === true) {
+    if (onlyDuplicates === "true") {
       const dupAgg = await Invoice.aggregate([
         { $match: { invoiceNumber: { $nin: [null, ""] } } },
         { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
