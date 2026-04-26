@@ -140,14 +140,17 @@ const upsertInvoiceDocs = async (
   docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>>
 ) => {
   if (!docs.length) return { inserted: 0, modified: 0 };
+  const hasVal = (v: unknown) =>
+    v !== undefined && v !== null && (typeof v !== "string" || v.trim() !== "");
   const ops = docs.map((doc) => {
     const filter = {
       invoiceNumber: doc.invoiceNumber,
       billing_period: doc.billing_period,
       assignedTo: doc.assignedTo ?? null,
     };
-    // Trường được cập nhật khi trùng (đè thông tin mới)
-    const $set: Record<string, unknown> = {
+    // Trường được cập nhật khi trùng — chỉ đè khi giá trị mới KHÔNG RỘNG
+    // (bảo vệ dữ liệu cũ không bị mất do file Excel mới thiếu thông tin)
+    const candidates: Record<string, unknown> = {
       customerName: doc.customerName,
       customerAddress: doc.customerAddress,
       recordBookCode: doc.recordBookCode,
@@ -160,6 +163,10 @@ const upsertInvoiceDocs = async (
       excelOrder: doc.excelOrder,
       issueDate: doc.issueDate,
     };
+    const $set: Record<string, unknown> = {};
+    Object.entries(candidates).forEach(([k, v]) => {
+      if (hasVal(v)) $set[k] = v;
+    });
     // Trường chỉ set khi tạo mới (giữ nguyên trạng thái thu/in/đóng cước khi trùng)
     const $setOnInsert: Record<string, unknown> = {
       createdAt: new Date(),
