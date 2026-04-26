@@ -9,6 +9,7 @@ import {
   toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
   updateCollectionDateByAdmin,
+  bulkUpdateInvoices,
   updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
@@ -108,5 +109,6 @@ router.put("/update/:invoiceId", authenticate, updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);
 router.patch("/:invoiceId/collection-date", authenticate, authorize(["admin"]), updateCollectionDateByAdmin);
+router.patch("/bulk-update", authenticate, bulkUpdateInvoices);
 
 export default router;

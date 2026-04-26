@@ -112,8 +112,86 @@ export const updateCollectionDateByAdmin = async (req: Request, res: Response) =
   }
 };
 
-export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => {
+/**
+ * Cập nhật hàng loạt cho các hóa đơn được chọn.
+ * PATCH /api/invoices/bulk-update
+ * body: { ids: string[], updates: { recordBookCode?, assignedTo?, billing_period?, collectionStatus? } }
+ */
+export const bulkUpdateInvoices = async (req: Request, res: Response) => {
   try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Không xác định được người dùng" });
+
+    const { ids, updates } = (req.body || {}) as {
+      ids?: string[];
+      updates?: {
+        recordBookCode?: string;
+        assignedTo?: string | null;
+        billing_period?: string;
+        collectionStatus?: "collected" | "not_collected";
+      };
+    };
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "Thiếu danh sách hóa đơn cần cập nhật." });
+    }
+    if (!updates || Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Thiếu dữ liệu cập nhật." });
+    }
+
+    const isAdmin = user.role === "admin";
+    const $set: Record<string, unknown> = {};
+    const $unset: Record<string, unknown> = {};
+
+    if (typeof updates.recordBookCode === "string" && updates.recordBookCode.trim() !== "") {
+      $set.recordBookCode = updates.recordBookCode.trim();
+    }
+    if (typeof updates.billing_period === "string" && updates.billing_period.trim() !== "") {
+      $set.billing_period = updates.billing_period.trim();
+    }
+    if (updates.assignedTo !== undefined) {
+      if (updates.assignedTo === null || updates.assignedTo === "") {
+        $set.assignedTo = null;
+      } else {
+        $set.assignedTo = updates.assignedTo;
+      }
+    }
+
+    if (updates.collectionStatus === "collected") {
+      $set.collectionStatus = "collected";
+      $set.collectionDate = new Date();
+      $set.collectionDateAdminEdited = false;
+      // Nếu không phải admin và người dùng không chỉ định assignedTo, tự gán chính mình
+      if (!isAdmin && updates.assignedTo === undefined) {
+        $set.assignedTo = user._id;
+      }
+    } else if (updates.collectionStatus === "not_collected") {
+      $set.collectionStatus = "not_collected";
+      $set.collectionDate = null;
+      $set.collectionDateAdminEdited = false;
+    }
+
+    if (Object.keys($set).length === 0) {
+      return res.status(400).json({ message: "Không có trường hợp lệ để cập nhật." });
+    }
+
+    const update: Record<string, unknown> = { $set };
+    if (Object.keys($unset).length > 0) update.$unset = $unset;
+
+    const result = await Invoice.updateMany({ _id: { $in: ids } }, update);
+
+    return res.status(200).json({
+      message: "Cập nhật hàng loạt thành công.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error("bulkUpdateInvoices error:", err);
+    return res.status(500).json({ message: "Lỗi server khi cập nhật hàng loạt." });
+  }
+};
+
+export const toggleInvoiceIsPaidStatus = async (req: Request, res: Response) => {  try {
     const invoiceId = req.params.invoiceId;
 
     const invoice = await Invoice.findById(invoiceId);
