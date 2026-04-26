@@ -305,9 +305,17 @@ export const cleanupRedundantDuplicates = async (_req: Request, res: Response) =
     });
 
     const idsToDelete: any[] = [];
+    const deletedSet = new Set<string>();
+    const markDel = (r: any) => {
+      const id = String(r._id);
+      if (deletedSet.has(id)) return;
+      deletedSet.add(id);
+      idsToDelete.push(r._id);
+    };
     const norm = (v: any) => (v === null || v === undefined ? "" : String(v).trim());
+    const hasAssignee = (r: any) => norm(r.assignedTo) !== "";
     groups.forEach((rows) => {
-      // Chỉ xét nhóm có nội dung giống hệt nhau
+      // Sig KHÔNG bao gồm assignedTo — coi 2 bản ghi là "giống nhau" kể cả khi 1 cái có NPT, 1 cái không.
       const sig = (r: any) =>
         [
           norm(r.customerName),
@@ -316,23 +324,39 @@ export const cleanupRedundantDuplicates = async (_req: Request, res: Response) =
           norm(r.currentAmount),
           norm(r.previousAmount),
           norm(r.totalAmount),
-          norm(r.assignedTo),
           norm(r.province),
         ].join("||");
       const first = sig(rows[0]);
       const allSame = rows.every((r) => sig(r) === first);
       if (!allSame) return;
 
-      // Phân loại
-      const touched = rows.filter((r) => !isUntouched(r));
-      const untouched = rows.filter((r) => isUntouched(r));
-      if (touched.length > 0) {
-        // Xóa toàn bộ untouched
-        untouched.forEach((r) => idsToDelete.push(r._id));
-      } else {
-        // Cả nhóm chưa tương tác → giữ 1, xóa phần còn lại
-        untouched.slice(1).forEach((r) => idsToDelete.push(r._id));
+      // BƯỚC 1: nếu trong nhóm có cả bản có NPT và không NPT → xóa các bản không NPT (chưa tương tác)
+      const withAssignee = rows.filter(hasAssignee);
+      const withoutAssignee = rows.filter((r) => !hasAssignee(r));
+      let remaining = rows;
+      if (withAssignee.length > 0 && withoutAssignee.length > 0) {
+        withoutAssignee.filter(isUntouched).forEach(markDel);
+        remaining = rows.filter((r) => !deletedSet.has(String(r._id)));
       }
+
+      // BƯỚC 2: trong các bản còn lại, dọn theo NPT
+      const byAssignee = new Map<string, any[]>();
+      remaining.forEach((r) => {
+        const k = norm(r.assignedTo);
+        const arr = byAssignee.get(k) || [];
+        arr.push(r);
+        byAssignee.set(k, arr);
+      });
+      byAssignee.forEach((sub) => {
+        if (sub.length < 2) return;
+        const touched = sub.filter((r) => !isUntouched(r));
+        const untouched = sub.filter((r) => isUntouched(r));
+        if (touched.length > 0) {
+          untouched.forEach(markDel);
+        } else {
+          untouched.slice(1).forEach(markDel);
+        }
+      });
     });
 
     if (idsToDelete.length === 0) {
