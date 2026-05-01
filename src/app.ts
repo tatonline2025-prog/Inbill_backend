@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import path from "path";
 
 import Invoice from "./models/invoiceModel";
+import areaConfigRoute from "./routes/areaConfigRoute";
 import authRoute from "./routes/authRoute";
 import customerMasterRoute from "./routes/customerMasterRoutes";
 import invoiceRouteLayout from "./routes/invoiceLayoutRoute";
@@ -109,6 +110,7 @@ app.use("/api/customers", customerMasterRoute);
 app.use("/api/invoiceslayout", invoiceRouteLayout);
 app.use("/api/transaction", transactionRoute);
 app.use("/api/v1/finance", sumRoute);
+app.use("/api/area-config", areaConfigRoute);
 
 export const dropLegacyInvoiceIndex = async () => {
   try {
