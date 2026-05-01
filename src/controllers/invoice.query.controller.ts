@@ -348,6 +348,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       assignedUserId,
       province,
       customerCode,
+      customerName,
       stationCode,
       userprovince,
       collectionDate,
@@ -422,36 +423,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    const searchConditions: any[] = [];
-
     if (customerCode && customerCode !== "") {
-      // Tìm kiếm theo customerCode (Mã khách hàng)
-      const regex = new RegExp(customerCode as string, "i");
-      searchConditions.push({ invoiceNumber: regex });
+      match.invoiceNumber = new RegExp(customerCode as string, "i");
     }
-
+    if (customerName && customerName !== "") {
+      match.customerName = new RegExp(customerName as string, "i");
+    }
     if (stationCode && stationCode !== "") {
-      // Tìm kiếm theo stationCode (Mã trạm)
-      const regex = new RegExp(stationCode as string, "i");
-      searchConditions.push({ recordBookCode: regex });
-    }
-
-    if (searchConditions.length > 0) {
-      if (searchConditions.length === 1) {
-        if (customerCode) {
-          match.invoiceNumber = searchConditions[0].invoiceNumber;
-        } else if (stationCode) {
-          match.recordBookCode = searchConditions[0].recordBookCode;
-        }
-      } else if (searchConditions.length > 1) {
-        if (!match.$and) match.$and = [];
-        match.$and.push({
-          $or: searchConditions, // Tìm hóa đơn thỏa mãn 1 trong 2 mã
-        });
-      } else if (searchConditions.length > 0) {
-        if (!match.$and) match.$and = [];
-        match.$and.push(searchConditions[0]);
-      }
+      match.recordBookCode = new RegExp(stationCode as string, "i");
     }
 
     // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
