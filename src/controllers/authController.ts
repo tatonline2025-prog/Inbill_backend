@@ -82,7 +82,7 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { userName, password, fullName, province, usertype, phone, stt } = req.body;
+    const { userName, password, fullName, province, usertype, phone, stt, areaPrefixes } = req.body;
 
     // --- VALIDATION ---
     if (!userName || typeof userName !== "string" || !userName.trim()) {
@@ -125,6 +125,7 @@ export const register = async (req: Request, res: Response) => {
       stt,
       collectionFee: 0,
       createdBy,
+      areaPrefixes: Array.isArray(areaPrefixes) ? areaPrefixes : [],
     });
 
     const userResponse = {
