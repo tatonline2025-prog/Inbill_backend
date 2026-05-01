@@ -1548,18 +1548,41 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
 export const getDailyCollectionSummary = async (req: Request, res: Response) => {
   try {
     const TZ = "Asia/Ho_Chi_Minh";
-    const days = Math.max(1, Math.min(parseInt(String(req.query.days || "31"), 10) || 31, 365));
+    const { assignedUserId, dateFrom, dateTo } = req.query;
 
-    const todayEnd = dayjs().tz(TZ).endOf("day");
-    const startDay = todayEnd.subtract(days - 1, "day").startOf("day");
+    // Chế độ khoảng ngày tuỳ chọn vs. N ngày gần nhất
+    let startDay: dayjs.Dayjs;
+    let endDay: dayjs.Dayjs;
+
+    if (dateFrom && dateTo) {
+      // Chế độ từ ngày A → ngày B
+      startDay = dayjs.tz(String(dateFrom), "YYYY-MM-DD", TZ).startOf("day");
+      endDay = dayjs.tz(String(dateTo), "YYYY-MM-DD", TZ).endOf("day");
+      if (!startDay.isValid() || !endDay.isValid() || endDay.isBefore(startDay)) {
+        return res.status(400).json({ message: "Khoảng ngày không hợp lệ" });
+      }
+    } else {
+      // Chế độ N ngày gần nhất (mặc định 31)
+      const days = Math.max(1, Math.min(parseInt(String(req.query.days || "31"), 10) || 31, 365));
+      endDay = dayjs().tz(TZ).endOf("day");
+      startDay = endDay.subtract(days - 1, "day").startOf("day");
+    }
 
     const match: any = {
       collectionStatus: "collected",
-      collectionDate: { $gte: startDay.toDate(), $lte: todayEnd.toDate() },
+      collectionDate: { $gte: startDay.toDate(), $lte: endDay.toDate() },
     };
 
+    // Phân quyền
     if (req.user?.role === "user") {
       match.assignedTo = req.user._id;
+    } else if (assignedUserId && assignedUserId !== "all") {
+      // Admin lọc theo người phụ trách cụ thể
+      try {
+        match.assignedTo = new mongoose.Types.ObjectId(String(assignedUserId));
+      } catch {
+        return res.status(400).json({ message: "assignedUserId không hợp lệ" });
+      }
     }
 
     const rows = await Invoice.aggregate([
@@ -1600,9 +1623,11 @@ export const getDailyCollectionSummary = async (req: Request, res: Response) => 
       map.set(r.date, { totalCount: r.totalCount || 0, totalAmount: r.totalAmount || 0, assignedUsers: r.assignedUsers || [] });
     }
 
+    // Tạo danh sách ngày liên tiếp từ endDay về startDay
+    const totalDays = endDay.diff(startDay, "day") + 1;
     const result: Array<{ date: string; totalCount: number; totalAmount: number; assignedUsers: string[] }> = [];
-    for (let i = 0; i < days; i++) {
-      const d = todayEnd.subtract(i, "day").format("DD/MM/YYYY");
+    for (let i = 0; i < totalDays; i++) {
+      const d = endDay.subtract(i, "day").format("DD/MM/YYYY");
       const v = map.get(d);
       result.push({ date: d, totalCount: v?.totalCount ?? 0, totalAmount: v?.totalAmount ?? 0, assignedUsers: v?.assignedUsers ?? [] });
     }
