@@ -567,6 +567,50 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
                 _id: null,
                 totalInvoices: { $sum: 1 },
                 sumTotalAmount: { $sum: "$totalAmountNum" },
+                assignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                          {
+                            $not: {
+                              $or: [
+                                { $eq: ["$assignedTo", null] },
+                                { $eq: ["$assignedTo", ""] },
+                                { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
+                unassignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                          {
+                            $or: [
+                              { $eq: ["$assignedTo", null] },
+                              { $eq: ["$assignedTo", ""] },
+                              { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                            ],
+                          },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
                 unassignedCount: {
                   $sum: {
                     $cond: [
@@ -603,6 +647,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       totalInvoices: 0,
       sumTotalAmount: 0,
       unassignedCount: 0,
+      assignedCustomerCodesRaw: [],
+      unassignedCustomerCodesRaw: [],
     };
     const duplicateInvoiceNumbers: string[] = (facetResult.duplicates || [])
       .map((d: any) => d.invoiceNumber)
@@ -615,6 +661,8 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
         unassignedInvoices: summaryData.unassignedCount,
+        assignedCustomerCodes: (summaryData.assignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
+        unassignedCustomerCodes: (summaryData.unassignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
       },
       duplicateInvoiceNumbers,
       pagination: {
@@ -747,6 +795,20 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
                 _id: null,
                 totalInvoices: { $sum: 1 },
                 sumTotalAmount: { $sum: "$totalAmountNum" },
+                assignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
               },
             },
           ],
@@ -756,7 +818,11 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
 
     const facetResult = result[0];
     const data = facetResult.data;
-    const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0 };
+    const summaryData = facetResult.summary[0] || {
+      totalInvoices: 0,
+      sumTotalAmount: 0,
+      assignedCustomerCodesRaw: [],
+    };
 
     // 🔎 Khi đang TÌM KIẾM, kèm thêm KH chỉ có trong "Danh sách tổng" (CustomerMaster)
     // — tức KH đã thu xong / chưa có hóa đơn kỳ hiện tại.
@@ -792,6 +858,8 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
       summary: {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
+        assignedCustomerCodes: (summaryData.assignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
+        unassignedCustomerCodes: 0,
       },
       pagination: {
         currentPage: page,
