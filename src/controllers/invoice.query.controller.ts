@@ -94,15 +94,8 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
       .populate("assignedTo", "fullName  phone collectionFee")
       .sort({ billing_period: -1, excelRowIndex: 1 });
 
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
-      });
-    }
-
-    // 4️⃣ Trả về dữ liệu
-    res.status(200).json(invoices);
+    // Trả mảng rỗng thay vì 404 để client mobile xử lý empty-state ổn định.
+    return res.status(200).json(invoices || []);
   } catch (error) {
     console.error("Lỗi khi lấy hoá đơn:", error);
     res.status(500).json({
@@ -229,16 +222,8 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
       .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1, excelRowIndex: 1 });
 
-    // 3️⃣ Nếu không có hoá đơn nào
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
-      });
-    }
-
-    // 4️⃣ Trả về dữ liệu
-    res.status(200).json(invoices);
+    // Trả mảng rỗng thay vì 404 để client mobile xử lý empty-state ổn định.
+    return res.status(200).json(invoices || []);
   } catch (error) {
     console.error("Lỗi khi lấy hoá đơn:", error);
     res.status(500).json({
