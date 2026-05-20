@@ -94,15 +94,8 @@ export const fetchAllUnColInvoiceByUser = async (req: Request, res: Response) =>
       .populate("assignedTo", "fullName  phone collectionFee")
       .sort({ billing_period: -1, excelRowIndex: 1 });
 
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
-      });
-    }
-
-    // 4️⃣ Trả về dữ liệu
-    res.status(200).json(invoices);
+    // Trả mảng rỗng thay vì 404 để client mobile xử lý empty-state ổn định.
+    return res.status(200).json(invoices || []);
   } catch (error) {
     console.error("Lỗi khi lấy hoá đơn:", error);
     res.status(500).json({
@@ -229,16 +222,8 @@ export const fetchAllColInvoiceByUser = async (req: Request, res: Response) => {
       .populate("assignedTo", "fullName  phone collectionFee") // Nếu muốn lấy thêm thông tin người được chỉ định
       .sort({ billing_period: -1, excelRowIndex: 1 });
 
-    // 3️⃣ Nếu không có hoá đơn nào
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy hoá đơn nào được giao cho bạn.",
-      });
-    }
-
-    // 4️⃣ Trả về dữ liệu
-    res.status(200).json(invoices);
+    // Trả mảng rỗng thay vì 404 để client mobile xử lý empty-state ổn định.
+    return res.status(200).json(invoices || []);
   } catch (error) {
     console.error("Lỗi khi lấy hoá đơn:", error);
     res.status(500).json({
@@ -348,12 +333,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       assignedUserId,
       province,
       customerCode,
+      customerName,
       stationCode,
       userprovince,
       collectionDate,
       sortField,
       sortDirection,
       isPaid,
+      onlyDuplicates,
     } = req.query;
 
     const hasFilter = !!((printStatus && printStatus !== "all") || (collectionStatus && collectionStatus !== "all"));
@@ -421,36 +408,34 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    const searchConditions: any[] = [];
-
     if (customerCode && customerCode !== "") {
-      // Tìm kiếm theo customerCode (Mã khách hàng)
-      const regex = new RegExp(customerCode as string, "i");
-      searchConditions.push({ invoiceNumber: regex });
+      match.invoiceNumber = new RegExp(customerCode as string, "i");
     }
-
+    if (customerName && customerName !== "") {
+      match.customerName = new RegExp(customerName as string, "i");
+    }
     if (stationCode && stationCode !== "") {
-      // Tìm kiếm theo stationCode (Mã trạm)
-      const regex = new RegExp(stationCode as string, "i");
-      searchConditions.push({ recordBookCode: regex });
+      match.recordBookCode = new RegExp(stationCode as string, "i");
     }
 
-    if (searchConditions.length > 0) {
-      if (searchConditions.length === 1) {
-        if (customerCode) {
-          match.invoiceNumber = searchConditions[0].invoiceNumber;
-        } else if (stationCode) {
-          match.recordBookCode = searchConditions[0].recordBookCode;
-        }
-      } else if (searchConditions.length > 1) {
-        if (!match.$and) match.$and = [];
-        match.$and.push({
-          $or: searchConditions, // Tìm hóa đơn thỏa mãn 1 trong 2 mã
-        });
-      } else if (searchConditions.length > 0) {
-        if (!match.$and) match.$and = [];
-        match.$and.push(searchConditions[0]);
-      }
+    // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
+    if (onlyDuplicates === "true") {
+      const dupAgg = await Invoice.aggregate([
+        { $match: { invoiceNumber: { $nin: [null, ""] } } },
+        { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+        { $match: { c: { $gt: 1 } } },
+        { $project: { _id: 1 } },
+      ]);
+      const dupNums = dupAgg.map((d: any) => d._id);
+      match.invoiceNumber = { $in: dupNums.length > 0 ? dupNums : ["___no_match___"] };
+    }
+
+    // ✅ Mặc định ẨN hóa đơn có totalAmount = 0 / rỗng (chuyển sang Danh sách tổng).
+    // Có thể bypass bằng query ?includeZero=true.
+    const includeZero = String((req.query as any).includeZero || "") === "true";
+    if (!includeZero) {
+      if (!match.$and) match.$and = [];
+      match.$and.push({ totalAmount: { $nin: [null, "", "0", "0.0", "0.00", 0] } });
     }
 
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
@@ -582,6 +567,50 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
                 _id: null,
                 totalInvoices: { $sum: 1 },
                 sumTotalAmount: { $sum: "$totalAmountNum" },
+                assignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                          {
+                            $not: {
+                              $or: [
+                                { $eq: ["$assignedTo", null] },
+                                { $eq: ["$assignedTo", ""] },
+                                { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
+                unassignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                          {
+                            $or: [
+                              { $eq: ["$assignedTo", null] },
+                              { $eq: ["$assignedTo", ""] },
+                              { $eq: [{ $type: "$assignedTo" }, "missing"] },
+                            ],
+                          },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
                 unassignedCount: {
                   $sum: {
                     $cond: [
@@ -600,6 +629,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
               },
             },
           ],
+
+          // Luồng 3: Danh sách mã hóa đơn trùng (invoiceNumber xuất hiện >=2 lần)
+          duplicates: [
+            { $match: { invoiceNumber: { $nin: [null, ""] } } },
+            { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+            { $match: { c: { $gt: 1 } } },
+            { $project: { _id: 0, invoiceNumber: "$_id" } },
+          ],
         },
       },
     ]);
@@ -610,7 +647,12 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       totalInvoices: 0,
       sumTotalAmount: 0,
       unassignedCount: 0,
+      assignedCustomerCodesRaw: [],
+      unassignedCustomerCodesRaw: [],
     };
+    const duplicateInvoiceNumbers: string[] = (facetResult.duplicates || [])
+      .map((d: any) => d.invoiceNumber)
+      .filter(Boolean);
 
     res.status(200).json({
       success: true,
@@ -619,7 +661,10 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
         unassignedInvoices: summaryData.unassignedCount,
+        assignedCustomerCodes: (summaryData.assignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
+        unassignedCustomerCodes: (summaryData.unassignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
       },
+      duplicateInvoiceNumbers,
       pagination: {
         currentPage: page,
         invoicesPerPage: limit,
@@ -661,6 +706,13 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
     const match: any = {
       assignedTo: new mongoose.Types.ObjectId(targetUserId as string),
     };
+
+    // 🔎 Khi NPT đang TÌM KIẾM (theo Mã KH / Mã trạm) → bỏ ràng buộc assignedTo
+    // để có thể tra cứu hóa đơn của KH bất kỳ (kể cả thuộc NPT khác hoặc trong danh sách tổng).
+    const hasSearch = !!((customerCode && String(customerCode).trim()) || (stationCode && String(stationCode).trim()));
+    if (hasSearch) {
+      delete match.assignedTo;
+    }
 
     // User page: chỉ lọc "đã đóng cước" khi client gửi isPaid=true.
     // Nếu isPaid=false hoặc không có param thì không áp điều kiện, để hiển thị đầy đủ dữ liệu được giao.
@@ -743,6 +795,20 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
                 _id: null,
                 totalInvoices: { $sum: 1 },
                 sumTotalAmount: { $sum: "$totalAmountNum" },
+                assignedCustomerCodesRaw: {
+                  $addToSet: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$invoiceNumber", null] },
+                          { $ne: ["$invoiceNumber", ""] },
+                        ],
+                      },
+                      "$invoiceNumber",
+                      null,
+                    ],
+                  },
+                },
               },
             },
           ],
@@ -752,14 +818,48 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
 
     const facetResult = result[0];
     const data = facetResult.data;
-    const summaryData = facetResult.summary[0] || { totalInvoices: 0, sumTotalAmount: 0 };
+    const summaryData = facetResult.summary[0] || {
+      totalInvoices: 0,
+      sumTotalAmount: 0,
+      assignedCustomerCodesRaw: [],
+    };
+
+    // 🔎 Khi đang TÌM KIẾM, kèm thêm KH chỉ có trong "Danh sách tổng" (CustomerMaster)
+    // — tức KH đã thu xong / chưa có hóa đơn kỳ hiện tại.
+    let masterMatches: any[] = [];
+    if (hasSearch) {
+      try {
+        const CustomerMaster = require("../models/customerMasterModel").default;
+        const masterMatch: any = {};
+        const masterOr: any[] = [];
+        if (customerCode && String(customerCode).trim()) {
+          masterOr.push({ invoiceNumber: new RegExp(String(customerCode).trim(), "i") });
+          masterOr.push({ customerName: new RegExp(String(customerCode).trim(), "i") });
+        }
+        if (stationCode && String(stationCode).trim()) {
+          masterOr.push({ recordBookCode: new RegExp(String(stationCode).trim(), "i") });
+        }
+        if (masterOr.length) masterMatch.$or = masterOr;
+        const seen = new Set(data.map((d: any) => String(d.invoiceNumber)));
+        const masters = await CustomerMaster.find(masterMatch)
+          .limit(50)
+          .populate("assignedTo", "fullName username")
+          .lean();
+        masterMatches = masters.filter((m: any) => !seen.has(String(m.invoiceNumber)));
+      } catch (e) {
+        console.error("master search err:", e);
+      }
+    }
 
     res.status(200).json({
       success: true,
       data,
+      masterMatches,
       summary: {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
+        assignedCustomerCodes: (summaryData.assignedCustomerCodesRaw || []).filter((code: string | null) => !!code).length,
+        unassignedCustomerCodes: 0,
       },
       pagination: {
         currentPage: page,
@@ -1469,6 +1569,104 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
     res.status(200).json(result);
   } catch (error) {
     console.error("Error in getInvoiceSummary:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * GET /api/invoices/daily-summary?days=31
+ * Trả về 31 ngày gần nhất (mới nhất đầu danh sách), mỗi ngày gồm số HĐ đã thu, tổng tiền, danh sách người phụ trách.
+ */
+export const getDailyCollectionSummary = async (req: Request, res: Response) => {
+  try {
+    const TZ = "Asia/Ho_Chi_Minh";
+    const { assignedUserId, dateFrom, dateTo } = req.query;
+
+    // Chế độ khoảng ngày tuỳ chọn vs. N ngày gần nhất
+    let startDay: dayjs.Dayjs;
+    let endDay: dayjs.Dayjs;
+
+    if (dateFrom && dateTo) {
+      // Chế độ từ ngày A → ngày B
+      startDay = dayjs.tz(String(dateFrom), "YYYY-MM-DD", TZ).startOf("day");
+      endDay = dayjs.tz(String(dateTo), "YYYY-MM-DD", TZ).endOf("day");
+      if (!startDay.isValid() || !endDay.isValid() || endDay.isBefore(startDay)) {
+        return res.status(400).json({ message: "Khoảng ngày không hợp lệ" });
+      }
+    } else {
+      // Chế độ N ngày gần nhất (mặc định 31)
+      const days = Math.max(1, Math.min(parseInt(String(req.query.days || "31"), 10) || 31, 365));
+      endDay = dayjs().tz(TZ).endOf("day");
+      startDay = endDay.subtract(days - 1, "day").startOf("day");
+    }
+
+    const match: any = {
+      collectionStatus: "collected",
+      collectionDate: { $gte: startDay.toDate(), $lte: endDay.toDate() },
+    };
+
+    // Phân quyền
+    if (req.user?.role === "user") {
+      match.assignedTo = req.user._id;
+    } else if (assignedUserId && assignedUserId !== "all") {
+      // Admin lọc theo người phụ trách cụ thể
+      try {
+        match.assignedTo = new mongoose.Types.ObjectId(String(assignedUserId));
+      } catch {
+        return res.status(400).json({ message: "assignedUserId không hợp lệ" });
+      }
+    }
+
+    const rows = await Invoice.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%d/%m/%Y", date: "$collectionDate", timezone: TZ } },
+          totalCount: { $sum: 1 },
+          totalAmount: { $sum: { $convert: { input: "$totalAmount", to: "double", onError: 0, onNull: 0 } } },
+          assignedIds: { $addToSet: "$assignedTo" },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignedIds",
+          foreignField: "_id",
+          as: "users",
+          pipeline: [
+            { $project: { fullName: 1, email: 1 } },
+            { $sort: { _id: 1 } },
+          ],
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          date: "$_id",
+          totalCount: 1,
+          totalAmount: 1,
+          assignedUsers: { $map: { input: "$users", as: "u", in: { $ifNull: ["$$u.fullName", "$$u.email"] } } },
+        },
+      },
+    ]);
+
+    const map = new Map<string, { totalCount: number; totalAmount: number; assignedUsers: string[] }>();
+    for (const r of rows) {
+      map.set(r.date, { totalCount: r.totalCount || 0, totalAmount: r.totalAmount || 0, assignedUsers: r.assignedUsers || [] });
+    }
+
+    // Tạo danh sách ngày liên tiếp từ endDay về startDay
+    const totalDays = endDay.diff(startDay, "day") + 1;
+    const result: Array<{ date: string; totalCount: number; totalAmount: number; assignedUsers: string[] }> = [];
+    for (let i = 0; i < totalDays; i++) {
+      const d = endDay.subtract(i, "day").format("DD/MM/YYYY");
+      const v = map.get(d);
+      result.push({ date: d, totalCount: v?.totalCount ?? 0, totalAmount: v?.totalAmount ?? 0, assignedUsers: v?.assignedUsers ?? [] });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in getDailyCollectionSummary:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

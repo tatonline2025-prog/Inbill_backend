@@ -34,7 +34,7 @@ export const changeInfo = async (req: Request, res: Response) => {
 
   try {
     const { editinguserId } = req.body;
-    const { fullName, province, username, pass, phone, stt, usertype, bankAccount, bankName } = req.body.formData;
+    const { fullName, province, username, pass, phone, stt, usertype, bankAccount, bankName, areaPrefixes } = req.body.formData;
 
     const user = await User.findById(editinguserId);
 
@@ -55,6 +55,11 @@ export const changeInfo = async (req: Request, res: Response) => {
     }
     if (bankName !== undefined) {
       user.bankName = bankName;
+    }
+
+    // Lưu danh sách khu vực + prefix
+    if (Array.isArray(areaPrefixes)) {
+      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = areaPrefixes;
     }
 
     // Mã hóa mật khẩu mới
@@ -95,6 +100,11 @@ export const changeMyInfo = async (req: Request, res: Response) => {
     if (typeof username === "string") user.username = username;
     if (typeof bankAccount === "string") user.bankAccount = bankAccount;
     if (typeof bankName === "string") user.bankName = bankName;
+
+    const { areaPrefixes } = req.body.formData || {};
+    if (Array.isArray(areaPrefixes)) {
+      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = areaPrefixes;
+    }
 
     if (typeof pass === "string" && pass.trim() !== "") {
       const hashedPassword = await bcrypt.hash(pass, 10);

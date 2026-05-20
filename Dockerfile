@@ -34,7 +34,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/.env ./
 
 # Expose cổng app
-EXPOSE 3000
+EXPOSE 5000
 
 # Chạy app
 CMD ["node", "dist/server.js"]

@@ -7,6 +7,7 @@ import timezone from "dayjs/plugin/timezone";
 
 import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
+import { upsertManyCustomerMasters } from "./customerMasterController";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -131,6 +132,67 @@ const makeWorkbookBuffer = async (
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
 
+/**
+ * Upsert hóa đơn theo khóa gộp (invoiceNumber, billing_period, assignedTo).
+ * - Nếu khớp đủ 3 trường → cập nhật thông tin (KHÔNG động vào trạng thái thu/in/đóng cước).
+ * - Nếu không khớp → chèn hóa đơn mới.
+ */
+const upsertInvoiceDocs = async (
+  docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>>
+) => {
+  if (!docs.length) return { inserted: 0, modified: 0 };
+  const hasVal = (v: unknown) =>
+    v !== undefined && v !== null && (typeof v !== "string" || v.trim() !== "");
+  const ops = docs.map((doc) => {
+    const filter = {
+      invoiceNumber: doc.invoiceNumber,
+      billing_period: doc.billing_period,
+      assignedTo: doc.assignedTo ?? null,
+    };
+    // Trường được cập nhật khi trùng — chỉ đè khi giá trị mới KHÔNG RỘNG
+    // (bảo vệ dữ liệu cũ không bị mất do file Excel mới thiếu thông tin)
+    const candidates: Record<string, unknown> = {
+      customerName: doc.customerName,
+      customerAddress: doc.customerAddress,
+      recordBookCode: doc.recordBookCode,
+      currentAmount: doc.currentAmount,
+      previousAmount: doc.previousAmount,
+      totalAmount: doc.totalAmount,
+      province: doc.province,
+      excelRowIndex: doc.excelRowIndex,
+      sortPriority: doc.sortPriority,
+      excelOrder: doc.excelOrder,
+      issueDate: doc.issueDate,
+    };
+    const $set: Record<string, unknown> = {};
+    Object.entries(candidates).forEach(([k, v]) => {
+      if (hasVal(v)) $set[k] = v;
+    });
+    // Trường chỉ set khi tạo mới (giữ nguyên trạng thái thu/in/đóng cước khi trùng)
+    const $setOnInsert: Record<string, unknown> = {
+      createdAt: new Date(),
+    };
+    return {
+      updateOne: {
+        filter,
+        update: { $set, $setOnInsert },
+        upsert: true,
+      },
+    };
+  });
+  const result = await Invoice.bulkWrite(ops, { ordered: false });
+  // Đồng bộ vào danh sách tổng (CustomerMaster) - không chặn flow chính
+  try {
+    await upsertManyCustomerMasters(docs);
+  } catch (e) {
+    console.error("upsertManyCustomerMasters (excel) error:", e);
+  }
+  return {
+    inserted: result.upsertedCount ?? 0,
+    modified: result.modifiedCount ?? 0,
+  };
+};
+
 export const previewExcel = async (req: Request, res: Response) => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -172,10 +234,11 @@ export const previewExcel = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await Invoice.insertMany(docs, { ordered: true });
+    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
     return res.status(200).json({
-      message: "Đã thêm hóa đơn thành công.",
-      inserted: inserted.length,
+      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      inserted: inserted.inserted,
+      modified: inserted.modified,
     });
   } catch (error) {
     console.error("previewExcel error:", error);
@@ -198,9 +261,11 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 
     const rows = parseWorksheetRows(worksheet);
     const batchId = Date.now();
+    const assignedUserId = String(req.body.assignedUserId || "").trim() || undefined;
     const docs = rows
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
+          assignedTo: assignedUserId,
           province: String(req.body.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
           batchId
@@ -212,10 +277,11 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await Invoice.insertMany(docs, { ordered: true });
+    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
     return res.status(200).json({
-      message: "Đã thêm hóa đơn thành công.",
-      inserted: inserted.length,
+      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      inserted: inserted.inserted,
+      modified: inserted.modified,
     });
   } catch (error) {
     console.error("previewExcelProvince error:", error);
@@ -486,8 +552,19 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     } else if (status === "unpaid") {
       match.collectionStatus = "not_collected";
       match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
-    } else {
+    } else if (status === "closed") {
+      // Đã đóng cước trong khoảng thời gian
+      match.isPaid = true;
       match.updatedAt = { $gte: startOfDay, $lte: endOfDay };
+    } else {
+      // Tất cả: lấy cả đã thu và chưa thu trong khoảng thời gian
+      match.$or = [
+        { collectionDate: { $gte: startOfDay, $lte: endOfDay } },
+        {
+          collectionStatus: "not_collected",
+          updatedAt: { $gte: startOfDay, $lte: endOfDay },
+        },
+      ];
     }
 
     if (typeof userIds === "string" && userIds.trim()) {
@@ -506,7 +583,12 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     }
 
     // Dynamic sort for collected export
-    const defaultSortCollectedExp: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
+    // Mặc định: status=paid → sắp xếp theo collectionDate giảm dần (mới nhất lên đầu)
+    //          status khác → sắp xếp theo thứ tự import gốc
+    const defaultSortCollectedExp: any =
+      status === "paid"
+        ? { collectionDate: -1, _id: 1 }
+        : { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
     let sortObjCollectedExp: any = defaultSortCollectedExp;
     
     if (sortField && sortDirection !== "none") {
@@ -534,6 +616,9 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       tram: invoice.recordBookCode || "",
       nguoiPhuTrach: (invoice.assignedTo as { fullName?: string } | undefined)?.fullName || "Chưa phân công",
       daThu: invoice.collectionStatus === "collected" ? "Đã thu" : "Chưa thu",
+      thoiDiemThu: invoice.collectionDate
+        ? dayjs(invoice.collectionDate).tz("Asia/Ho_Chi_Minh").format("HH:mm DD/MM/YYYY")
+        : "",
     }));
 
     const buffer = await makeWorkbookBuffer(
@@ -549,6 +634,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
         { header: "Trạm", key: "tram", width: 10 },
         { header: "Người phụ trách", key: "nguoiPhuTrach", width: 20 },
         { header: "Đã thu", key: "daThu", width: 10 },
+        { header: "Thời điểm thu", key: "thoiDiemThu", width: 18 },
       ],
       rows
     );
@@ -563,6 +649,8 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     let filePrefix = "Tong-Hop-Hoa-Don";
     if (status === "paid") filePrefix = "DS-Hoa-Don-Da-Thu";
     if (status === "unpaid") filePrefix = "DS-Chua-Thu";
+    if (status === "closed") filePrefix = "DS-Da-Dong-Cuoc";
+    if (status === "all") filePrefix = "DS-Tat-Ca";
     if (isClosed === "true") filePrefix += "-Da-Dong-Cuoc";
     if (isClosed === "false") filePrefix += "-Chua-Dong-Cuoc";
 

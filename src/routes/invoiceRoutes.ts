@@ -8,6 +8,10 @@ import {
   quickAddInvoice,
   toggleInvoiceIsPaidStatus,
   toggleInvoiceStatus,
+  updateCollectionDateByAdmin,
+  bulkUpdateInvoices,
+  syncDuplicateInvoiceInfo,
+  cleanupRedundantDuplicates,
   updateInvoice,
 } from "../controllers/invoiceController";
 import { authenticate, authorize } from "../middleware/auth"; // Import middleware xác thực
@@ -31,6 +35,7 @@ import {
   fetchTop3StationsByUser,
   fetchUserInvoices,
   getCollectionSummary,
+  getDailyCollectionSummary,
   getInvoiceSummary,
   getLatestBillingPeriod,
   searchInvoice,
@@ -70,6 +75,7 @@ router.post(
 
 router.get("/summary", authenticate, getInvoiceSummary);
 router.get("/collectsummary", authenticate, getCollectionSummary);
+router.get("/daily-summary", authenticate, getDailyCollectionSummary);
 router.get("/search", authenticate, searchInvoice);
 router.get("/search-by-station", authenticate, searchInvoicesByStationCode);
 
@@ -104,5 +110,9 @@ router.delete("/delete/:invoiceId", authenticate, deleteInvoice);
 router.put("/update/:invoiceId", authenticate, updateInvoice);
 router.patch("/:invoiceId/toggle", authenticate, toggleInvoiceStatus);
 router.patch("/:invoiceId/toggleispaid", authenticate, toggleInvoiceIsPaidStatus);
+router.patch("/:invoiceId/collection-date", authenticate, authorize(["admin"]), updateCollectionDateByAdmin);
+router.patch("/bulk-update", authenticate, bulkUpdateInvoices);
+router.post("/sync-duplicates", authenticate, authorize(["admin"]), syncDuplicateInvoiceInfo);
+router.post("/cleanup-duplicates", authenticate, authorize(["admin"]), cleanupRedundantDuplicates);
 
 export default router;

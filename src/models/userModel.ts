@@ -28,6 +28,17 @@ const userSchema = new mongoose.Schema(
     collectionFee: { type: String },
     usertype: { type: String },
 
+    // Danh sách khu vực (xã/phường) và prefix mã hóa đơn
+    areaPrefixes: {
+      type: [
+        {
+          area: { type: String, required: true },
+          prefix: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
+
     // Dùng để phân quyền hệ thống
     role: {
       type: String,
