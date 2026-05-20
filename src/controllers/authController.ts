@@ -164,12 +164,19 @@ export const me = async (req: Request, res: Response) => {
 
 export const changepassword = async (req: Request, res: Response) => {
   try {
-    const { newpass } = req.body;
+    const oldPassword = normalizePassword(req.body?.oldPassword);
+    const newPassword = normalizePassword(req.body?.newPassword ?? req.body?.newpass);
 
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
         message: "Ban chua dang nhap hoac token khong hop le.",
+      });
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        message: "Mat khau moi phai co it nhat 6 ky tu.",
       });
     }
 
@@ -179,7 +186,18 @@ export const changepassword = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Khong tim thay nguoi dung." });
     }
 
-    const hashedPassword = await bcrypt.hash(newpass, 10);
+    if (oldPassword) {
+      if (typeof user.password !== "string" || !isBcryptHash(user.password)) {
+        return res.status(400).json({ message: "Du lieu mat khau nguoi dung khong hop le." });
+      }
+
+      const isPasswordCorrect = await bcrypt.compare(oldPassword, user.password);
+      if (!isPasswordCorrect) {
+        return res.status(401).json({ message: "Mat khau cu khong dung." });
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
 
     await user.save();
