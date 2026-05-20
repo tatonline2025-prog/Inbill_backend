@@ -163,7 +163,11 @@ export const me = async (req: Request, res: Response) => {
   }
 };
 
-export const changepassword = async (req: Request, res: Response) => {
+const changePasswordWithPolicy = async (
+  req: Request,
+  res: Response,
+  options: { requireOldPassword: boolean }
+) => {
   try {
     const oldPassword = normalizePassword(req.body?.oldPassword);
     const newPassword = normalizePassword(req.body?.newPassword ?? req.body?.newpass);
@@ -178,6 +182,18 @@ export const changepassword = async (req: Request, res: Response) => {
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({
         message: "Mat khau moi phai co it nhat 6 ky tu.",
+      });
+    }
+
+    if (options.requireOldPassword && !oldPassword) {
+      return res.status(400).json({
+        message: "Vui long nhap mat khau hien tai.",
+      });
+    }
+
+    if (oldPassword && oldPassword === newPassword) {
+      return res.status(400).json({
+        message: "Mat khau moi phai khac mat khau hien tai.",
       });
     }
 
@@ -208,4 +224,12 @@ export const changepassword = async (req: Request, res: Response) => {
     console.error("Loi doi mat khau:", error);
     return res.status(500).json({ message: "Da xay ra loi khi doi mat khau." });
   }
+};
+
+export const changepassword = async (req: Request, res: Response) => {
+  return changePasswordWithPolicy(req, res, { requireOldPassword: false });
+};
+
+export const changepasswordStrict = async (req: Request, res: Response) => {
+  return changePasswordWithPolicy(req, res, { requireOldPassword: true });
 };
