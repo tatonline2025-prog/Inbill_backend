@@ -749,3 +749,40 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Lỗi server khi thêm hóa đơn" });
   }
 };
+
+export const deleteInvoicesByBillingPeriodAndAssignedUser = async (req: Request, res: Response) => {
+  try {
+    const { billing_period, assignedUserId } = req.query;
+
+    if (!billing_period) {
+      return res.status(400).json({ message: "Thiếu kỳ hóa đơn!" });
+    }
+
+    const filter: Record<string, unknown> = {
+      billing_period: String(billing_period).trim(),
+    };
+
+    if (assignedUserId && assignedUserId !== "all") {
+      if (assignedUserId === "no_one") {
+        filter.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+      } else if (mongoose.Types.ObjectId.isValid(String(assignedUserId))) {
+        filter.assignedTo = new mongoose.Types.ObjectId(String(assignedUserId));
+      } else {
+        return res.status(400).json({ message: "Người phụ trách không hợp lệ." });
+      }
+    }
+
+    const result = await Invoice.deleteMany(filter);
+
+    return res.status(200).json({
+      message:
+        assignedUserId && assignedUserId !== "all"
+          ? `Đã xoá ${result.deletedCount} hoá đơn của kỳ ${billing_period} theo người phụ trách đã chọn`
+          : `Đã xoá ${result.deletedCount} hoá đơn của kỳ ${billing_period}`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("deleteInvoicesByBillingPeriodAndAssignedUser error:", error);
+    return res.status(500).json({ message: "Lỗi server khi xoá hoá đơn!" });
+  }
+};

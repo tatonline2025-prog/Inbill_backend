@@ -319,6 +319,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       sortDirection,
       printStatus,
       assignedUserId,
+      billingPeriod,
       province,
       customerCode,
       stationCode,
@@ -358,6 +359,10 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     const provinceValue = (province || userprovince) as string | undefined;
     if (provinceValue && provinceValue !== "all") {
       filter.province = provinceValue;
+    }
+
+    if (billingPeriod && billingPeriod !== "all") {
+      filter.billing_period = String(billingPeriod).trim();
     }
 
     if (collectionStatus) {

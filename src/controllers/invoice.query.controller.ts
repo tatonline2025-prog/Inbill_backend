@@ -28,6 +28,28 @@ const parsePrefixList = (value: unknown): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const parseBillingPeriodParts = (value: unknown): { month: number; year: number } | null => {
+  const match = /^(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
+  if (!match) return null;
+
+  return {
+    month: Number(match[1]),
+    year: Number(match[2]),
+  };
+};
+
+const sortBillingPeriodsDesc = (values: string[]): string[] =>
+  [...values].sort((left, right) => {
+    const leftParts = parseBillingPeriodParts(left);
+    const rightParts = parseBillingPeriodParts(right);
+
+    if (!leftParts && !rightParts) return right.localeCompare(left, "vi");
+    if (!leftParts) return 1;
+    if (!rightParts) return -1;
+    if (leftParts.year !== rightParts.year) return rightParts.year - leftParts.year;
+    return rightParts.month - leftParts.month;
+  });
+
 const normalizeText = (value: unknown): string =>
   String(value ?? "")
     .trim()
@@ -441,6 +463,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       printStatus,
       collectionStatus,
       assignedUserId,
+      billingPeriod,
       province,
       customerCode,
       customerName,
@@ -506,6 +529,10 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
 
     if (province && province !== "all") {
       match.province = province;
+    }
+
+    if (billingPeriod && billingPeriod !== "all") {
+      match.billing_period = String(billingPeriod).trim();
     }
 
     if (collectionDate && collectionStatus === "collected") {
@@ -1983,6 +2010,25 @@ export const getLatestBillingPeriod = async (req: Request, res: Response) => {
   }
 };
 
+export const getBillingPeriods = async (_req: Request, res: Response) => {
+  try {
+    const rawPeriods = await Invoice.distinct("billing_period", {
+      billing_period: { $exists: true, $ne: "" },
+    });
+
+    const periods = sortBillingPeriodsDesc(
+      rawPeriods
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    );
+
+    return res.status(200).json({ success: true, periods });
+  } catch (error) {
+    console.error("getBillingPeriods error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi lấy danh sách kỳ thanh toán." });
+  }
+};
+
 /**
  * Tìm kiếm hóa đơn theo Mã trạm (recordBookCode) - KHÔNG có bộ lọc nào khác.
  * GET /api/invoices/search-by-station?stationCode=...&page=1&limit=20
@@ -2128,6 +2174,7 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       isPaidFilter,
       selectedProvince,
       areaPrefix,
+      billingPeriod,
       searchType,
       searchValue,
       collectionDate,
@@ -2158,6 +2205,10 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
 
     if (selectedProvince && selectedProvince !== "all") {
       match.province = selectedProvince;
+    }
+
+    if (billingPeriod && billingPeriod !== "all") {
+      match.billing_period = String(billingPeriod).trim();
     }
 
     const areaPrefixes = parsePrefixList(areaPrefix);

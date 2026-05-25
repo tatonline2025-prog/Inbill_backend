@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import {
   createInvoice,
-  deleteByBillingPeriod,
+  deleteInvoicesByBillingPeriodAndAssignedUser,
   deleteInvoice,
   markListInvoicesAsPaid,
   quickAddInvoice,
@@ -34,6 +34,7 @@ import {
   fetchTop20HighestInvoices,
   fetchTop3StationsByUser,
   fetchUserInvoices,
+  getBillingPeriods,
   getCollectionSummary,
   getDailyCollectionSummary,
   getInvoiceSummary,
@@ -91,7 +92,8 @@ router.get("/fetchallbyusermonth", authenticate, fetchInvoiceByUserMonth);
 router.get("/fetchalluncolbyuser", authenticate, fetchAllUnColInvoiceByUser);
 router.get("/fetchallcolbyuser", authenticate, fetchAllColInvoiceByUser);
 router.get("/latest-period", authenticate, getLatestBillingPeriod);
-router.delete("/deleteByBillingPeriod", authenticate, deleteByBillingPeriod);
+router.get("/billing-periods", authenticate, getBillingPeriods);
+router.delete("/deleteByBillingPeriod", authenticate, authorize(["admin"]), deleteInvoicesByBillingPeriodAndAssignedUser);
 
 router.post("/creatnew", authenticate, createInvoice);
 router.post("/quick-add", authenticate, quickAddInvoice);
