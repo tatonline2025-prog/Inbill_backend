@@ -14,6 +14,20 @@ dayjs.extend(timezone);
 
 type RowMap = Record<string, string>;
 
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildContainsRegex = (value: string): RegExp => new RegExp(escapeRegex(value.trim()), "i");
+
+const buildPrefixRegex = (value: string): RegExp => new RegExp(`^${escapeRegex(value.trim())}`, "i");
+
+const addAndCondition = (target: Record<string, unknown>, condition: Record<string, unknown>) => {
+  const nextAnd = Array.isArray((target as { $and?: Record<string, unknown>[] }).$and)
+    ? [...((target as { $and?: Record<string, unknown>[] }).$and as Record<string, unknown>[]), condition]
+    : [condition];
+
+  (target as { $and?: Record<string, unknown>[] }).$and = nextAnd;
+};
+
 const normalizeHeaderKey = (raw: string): string =>
   String(raw || "")
     .normalize("NFD")
@@ -291,7 +305,22 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
 
 export const exportInvoicesToExcel = async (req: Request, res: Response) => {
   try {
-    const { userIds, collectionStatus, paymentStatus, sortField, sortDirection, printStatus, assignedUserId, province, customerCode, stationCode, userprovince, isPaid } = req.query as any;
+    const {
+      userIds,
+      collectionStatus,
+      paymentStatus,
+      sortField,
+      sortDirection,
+      printStatus,
+      assignedUserId,
+      province,
+      customerCode,
+      stationCode,
+      userprovince,
+      isPaid,
+      collectionDate,
+      areaPrefix,
+    } = req.query as any;
 
     // Dynamic sort logic (mirror query.controller)
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
@@ -301,7 +330,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       const direction = parseInt(sortDirection) || -1;
       sortObj = { [sortField]: direction, ...defaultSort };
     }
-        const filter: Record<string, unknown> = {};
+    const filter: Record<string, unknown> = {};
 
     if (req.user?.role === "user") {
       filter.assignedTo = req.user._id;
@@ -316,7 +345,8 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
     }
 
     if (printStatus && printStatus !== "all") {
-      filter.printStatus = printStatus === "not_printed" ? { $ne: "printed" } : "printed";
+      filter.printStatus =
+        printStatus === "not_printed" || printStatus === "notPrinted" ? { $ne: "printed" } : "printed";
     }
 
     const provinceValue = (province || userprovince) as string | undefined;
@@ -334,6 +364,13 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       }
     }
 
+    if (collectionDate && (collectionStatus === "paid" || collectionStatus === "collected")) {
+      const targetDate = String(collectionDate);
+      const startOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+      const endOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+      filter.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+
     if (paymentStatus === "true") {
       filter.isPaid = true;
     } else if (paymentStatus === "false") {
@@ -344,12 +381,16 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       filter.isPaid = false;
     }
 
+    if (areaPrefix && areaPrefix !== "all") {
+      addAndCondition(filter, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
+    }
+
     if (customerCode) {
-      filter.invoiceNumber = new RegExp(String(customerCode), "i");
+      addAndCondition(filter, { invoiceNumber: buildContainsRegex(String(customerCode)) });
     }
 
     if (stationCode) {
-      filter.recordBookCode = new RegExp(String(stationCode), "i");
+      filter.recordBookCode = buildContainsRegex(String(stationCode));
     }
 
     const invoices = await Invoice.find(filter)

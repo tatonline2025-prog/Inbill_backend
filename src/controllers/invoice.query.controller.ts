@@ -8,6 +8,20 @@ import Invoice from "../models/invoiceModel";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildContainsRegex = (value: string): RegExp => new RegExp(escapeRegex(value.trim()), "i");
+
+const buildPrefixRegex = (value: string): RegExp => new RegExp(`^${escapeRegex(value.trim())}`, "i");
+
+const addAndCondition = (target: Record<string, unknown>, condition: Record<string, unknown>) => {
+  const nextAnd = Array.isArray((target as { $and?: Record<string, unknown>[] }).$and)
+    ? [...((target as { $and?: Record<string, unknown>[] }).$and as Record<string, unknown>[]), condition]
+    : [condition];
+
+  (target as { $and?: Record<string, unknown>[] }).$and = nextAnd;
+};
+
 // --- [ Public Queries - User ] ---
 
 /**
@@ -337,6 +351,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       stationCode,
       userprovince,
       collectionDate,
+      areaPrefix,
       sortField,
       sortDirection,
       isPaid,
@@ -408,14 +423,18 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
+    if (areaPrefix && areaPrefix !== "all") {
+      addAndCondition(match, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
+    }
+
     if (customerCode && customerCode !== "") {
-      match.invoiceNumber = new RegExp(customerCode as string, "i");
+      addAndCondition(match, { invoiceNumber: buildContainsRegex(String(customerCode)) });
     }
     if (customerName && customerName !== "") {
-      match.customerName = new RegExp(customerName as string, "i");
+      match.customerName = buildContainsRegex(String(customerName));
     }
     if (stationCode && stationCode !== "") {
-      match.recordBookCode = new RegExp(stationCode as string, "i");
+      match.recordBookCode = buildContainsRegex(String(stationCode));
     }
 
     // ✅ Filter "Mã trùng": chỉ lấy các hóa đơn có invoiceNumber trùng (>=2 bản ghi toàn DB)
@@ -427,15 +446,14 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         { $project: { _id: 1 } },
       ]);
       const dupNums = dupAgg.map((d: any) => d._id);
-      match.invoiceNumber = { $in: dupNums.length > 0 ? dupNums : ["___no_match___"] };
+      addAndCondition(match, { invoiceNumber: { $in: dupNums.length > 0 ? dupNums : ["___no_match___"] } });
     }
 
     // ✅ Mặc định ẨN hóa đơn có totalAmount = 0 / rỗng (chuyển sang Danh sách tổng).
     // Có thể bypass bằng query ?includeZero=true.
     const includeZero = String((req.query as any).includeZero || "") === "true";
     if (!includeZero) {
-      if (!match.$and) match.$and = [];
-      match.$and.push({ totalAmount: { $nin: [null, "", "0", "0.0", "0.00", 0] } });
+      addAndCondition(match, { totalAmount: { $nin: [null, "", "0", "0.0", "0.00", 0] } });
     }
 
     const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
@@ -1970,9 +1988,17 @@ export const searchInvoicesByStationCode = async (req: Request, res: Response) =
 
 export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
   try {
-    const { filterPrint, filterCollection, filterAssignedUser, isPaidFilter, selectedProvince } = req.query;
-
-    // console.log(filterPrint, filterCollection, filterAssignedUser, isPaidFilter, selectedProvince);
+    const {
+      filterPrint,
+      filterCollection,
+      filterAssignedUser,
+      isPaidFilter,
+      selectedProvince,
+      areaPrefix,
+      searchType,
+      searchValue,
+      collectionDate,
+    } = req.query;
 
     const match: any = {};
 
@@ -1983,15 +2009,26 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
     }
 
     if (filterPrint && filterPrint !== "all") {
-      match.printStatus = filterPrint === "not_printed" ? { $ne: "printed" } : filterPrint;
+      match.printStatus =
+        filterPrint === "not_printed" || filterPrint === "notPrinted" ? { $ne: "printed" } : filterPrint;
     }
 
-    if (filterCollection && filterCollection !== "all") {
+    if (filterCollection === "collected_today") {
+      match.collectionStatus = "collected";
+      const targetDate = String(collectionDate || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD"));
+      const startOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+      const endOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+      match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    } else if (filterCollection && filterCollection !== "all" && filterCollection !== "duplicates") {
       match.collectionStatus = filterCollection;
     }
 
     if (selectedProvince && selectedProvince !== "all") {
       match.province = selectedProvince;
+    }
+
+    if (areaPrefix && areaPrefix !== "all") {
+      addAndCondition(match, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
     }
 
     if (filterAssignedUser && filterAssignedUser !== "all") {
@@ -2000,6 +2037,25 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       } else {
         match.assignedTo = filterAssignedUser;
       }
+    }
+
+    if (searchValue && String(searchValue).trim()) {
+      if (searchType === "stationCode") {
+        match.recordBookCode = buildContainsRegex(String(searchValue));
+      } else {
+        addAndCondition(match, { invoiceNumber: buildContainsRegex(String(searchValue)) });
+      }
+    }
+
+    if (filterCollection === "duplicates") {
+      const dupAgg = await Invoice.aggregate([
+        { $match: { invoiceNumber: { $nin: [null, ""] } } },
+        { $group: { _id: "$invoiceNumber", c: { $sum: 1 } } },
+        { $match: { c: { $gt: 1 } } },
+        { $project: { _id: 1 } },
+      ]);
+      const dupNums = dupAgg.map((d: any) => d._id);
+      addAndCondition(match, { invoiceNumber: { $in: dupNums.length > 0 ? dupNums : ["___no_match___"] } });
     }
 
     const result = await Invoice.find(match).select("invoiceNumber -_id").lean();
