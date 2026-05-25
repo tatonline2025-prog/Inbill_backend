@@ -193,7 +193,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
 };
 
 /**
- * Đồng bộ thông tin giữa các hóa đơn cùng invoiceNumber (mã trùng):
+ * Đồng bộ thông tin giữa các hóa đơn cùng invoiceNumber (giống mã KH):
  * - Với mỗi field text (customerName, customerAddress, recordBookCode, customerPhone, province),
  *   nếu một bản ghi đang trống mà bản ghi cùng invoiceNumber có giá trị → copy qua.
  * - KHÔNG động đến: collectionStatus, collectionDate, isPaid, printStatus, billing_period, assignedTo, currentAmount/previousAmount/totalAmount.
@@ -212,7 +212,7 @@ export const syncDuplicateInvoiceInfo = async (_req: Request, res: Response) => 
     ]);
     const dupNums = dupAgg.map((d: any) => d._id);
     if (dupNums.length === 0) {
-      return res.status(200).json({ message: "Không có mã trùng nào để đồng bộ.", scanned: 0, updated: 0 });
+      return res.status(200).json({ message: "Không có nhóm giống mã KH nào để đồng bộ.", scanned: 0, updated: 0 });
     }
 
     // 2) Lấy tất cả hóa đơn thuộc các invoiceNumber trùng
@@ -249,20 +249,20 @@ export const syncDuplicateInvoiceInfo = async (_req: Request, res: Response) => 
 
     if (ops.length === 0) {
       return res.status(200).json({
-        message: "Các mã trùng đã đồng bộ — không có gì để bổ sung.",
+        message: "Các nhóm giống mã KH đã được đồng bộ, không có gì cần bổ sung thêm.",
         scanned: invoices.length,
         updated: 0,
       });
     }
     const result = await Invoice.bulkWrite(ops, { ordered: false });
     return res.status(200).json({
-      message: `Đã đồng bộ thông tin cho ${result.modifiedCount ?? 0} hóa đơn (trên tổng ${invoices.length} bản ghi mã trùng).`,
+      message: `Đã đồng bộ thông tin cho ${result.modifiedCount ?? 0} hóa đơn trong ${invoices.length} bản ghi giống mã KH.`,
       scanned: invoices.length,
       updated: result.modifiedCount ?? 0,
     });
   } catch (err) {
     console.error("syncDuplicateInvoiceInfo error:", err);
-    return res.status(500).json({ message: "Lỗi server khi đồng bộ mã trùng." });
+    return res.status(500).json({ message: "Lỗi máy chủ khi đồng bộ các nhóm giống mã KH." });
   }
 };
 
@@ -361,16 +361,16 @@ export const cleanupRedundantDuplicates = async (_req: Request, res: Response) =
     });
 
     if (idsToDelete.length === 0) {
-      return res.status(200).json({ message: "Không có hóa đơn nào cần xóa.", deleted: 0 });
+      return res.status(200).json({ message: "Không có hóa đơn trùng nào cần xóa.", deleted: 0 });
     }
     const result = await Invoice.deleteMany({ _id: { $in: idsToDelete } });
     return res.status(200).json({
-      message: `Đã xóa ${result.deletedCount ?? 0} hóa đơn trùng (giống hệt và chưa tương tác).`,
+      message: `Đã xóa ${result.deletedCount ?? 0} hóa đơn trùng thực sự (giống hệt và chưa tương tác).`,
       deleted: result.deletedCount ?? 0,
     });
   } catch (err) {
     console.error("cleanupRedundantDuplicates error:", err);
-    return res.status(500).json({ message: "Lỗi server khi dọn mã trùng." });
+    return res.status(500).json({ message: "Lỗi máy chủ khi dọn hóa đơn trùng." });
   }
 };
 

@@ -28,6 +28,12 @@ const addAndCondition = (target: Record<string, unknown>, condition: Record<stri
   (target as { $and?: Record<string, unknown>[] }).$and = nextAnd;
 };
 
+const parsePrefixList = (value: unknown): string[] =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const normalizeHeaderKey = (raw: string): string =>
   String(raw || "")
     .normalize("NFD")
@@ -381,8 +387,11 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       filter.isPaid = false;
     }
 
-    if (areaPrefix && areaPrefix !== "all") {
-      addAndCondition(filter, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
+    const areaPrefixes = parsePrefixList(areaPrefix);
+    if (areaPrefixes.length > 0) {
+      addAndCondition(filter, {
+        $or: areaPrefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) })),
+      });
     }
 
     if (customerCode) {

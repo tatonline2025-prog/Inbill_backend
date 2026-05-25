@@ -22,6 +22,102 @@ const addAndCondition = (target: Record<string, unknown>, condition: Record<stri
   (target as { $and?: Record<string, unknown>[] }).$and = nextAnd;
 };
 
+const parsePrefixList = (value: unknown): string[] =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizeText = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const normalizeAmount = (value: unknown): string => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return String(Math.trunc(value));
+
+  const normalized = String(value).trim().replace(/[^\d-]/g, "");
+  return normalized;
+};
+
+const normalizeAssignee = (value: unknown): string => {
+  if (!value) return "";
+
+  if (typeof value === "string") return value.trim();
+
+  if (typeof value === "object" && value !== null) {
+    const withId = value as { _id?: string | mongoose.Types.ObjectId };
+    if (withId._id) return String(withId._id).trim();
+  }
+
+  return String(value).trim();
+};
+
+const hasConflictingNonEmptyValues = (values: string[]): boolean => {
+  const distinctValues = new Set(values.filter(Boolean));
+  return distinctValues.size > 1;
+};
+
+type DuplicateStatus = "same_customer_code_parallel" | "updated_customer_info" | "duplicate_invoice";
+
+const classifyInvoiceNumberGroup = (rows: Array<Record<string, unknown>>): DuplicateStatus => {
+  const billingPeriods = rows.map((row) => normalizeText(row.billing_period));
+  if (hasConflictingNonEmptyValues(billingPeriods)) {
+    return "same_customer_code_parallel";
+  }
+
+  const currentAmounts = rows.map((row) => normalizeAmount(row.currentAmount));
+  const previousAmounts = rows.map((row) => normalizeAmount(row.previousAmount));
+  const totalAmounts = rows.map((row) => normalizeAmount(row.totalAmount));
+
+  if (
+    hasConflictingNonEmptyValues(currentAmounts) ||
+    hasConflictingNonEmptyValues(previousAmounts) ||
+    hasConflictingNonEmptyValues(totalAmounts)
+  ) {
+    return "same_customer_code_parallel";
+  }
+
+  const assignees = rows.map((row) => normalizeAssignee(row.assignedTo));
+  if (hasConflictingNonEmptyValues(assignees)) {
+    return "same_customer_code_parallel";
+  }
+
+  const infoFields = ["customerName", "customerAddress", "recordBookCode", "customerPhone", "province"] as const;
+  const hasInfoConflict = infoFields.some((field) =>
+    hasConflictingNonEmptyValues(rows.map((row) => normalizeText(row[field])))
+  );
+  if (hasInfoConflict) {
+    return "updated_customer_info";
+  }
+
+  const resolvedInfo = infoFields.reduce<Record<string, string>>((accumulator, field) => {
+    const firstNonEmpty = rows.map((row) => normalizeText(row[field])).find(Boolean);
+    accumulator[field] = firstNonEmpty || "";
+    return accumulator;
+  }, {});
+  const resolvedAssignee = assignees.find(Boolean) || "";
+
+  const signatures = rows.map((row) =>
+    JSON.stringify({
+      billing_period: normalizeText(row.billing_period),
+      currentAmount: normalizeAmount(row.currentAmount),
+      previousAmount: normalizeAmount(row.previousAmount),
+      totalAmount: normalizeAmount(row.totalAmount),
+      customerName: normalizeText(row.customerName) || resolvedInfo.customerName,
+      customerAddress: normalizeText(row.customerAddress) || resolvedInfo.customerAddress,
+      recordBookCode: normalizeText(row.recordBookCode) || resolvedInfo.recordBookCode,
+      customerPhone: normalizeText(row.customerPhone) || resolvedInfo.customerPhone,
+      province: normalizeText(row.province) || resolvedInfo.province,
+      assignedTo: normalizeAssignee(row.assignedTo) || resolvedAssignee,
+    })
+  );
+
+  return new Set(signatures).size === 1 ? "duplicate_invoice" : "same_customer_code_parallel";
+};
+
 // --- [ Public Queries - User ] ---
 
 /**
@@ -423,8 +519,11 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    if (areaPrefix && areaPrefix !== "all") {
-      addAndCondition(match, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
+    const areaPrefixes = parsePrefixList(areaPrefix);
+    if (areaPrefixes.length > 0) {
+      addAndCondition(match, {
+        $or: areaPrefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) })),
+      });
     }
 
     if (customerCode && customerCode !== "") {
@@ -671,10 +770,44 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     const duplicateInvoiceNumbers: string[] = (facetResult.duplicates || [])
       .map((d: any) => d.invoiceNumber)
       .filter(Boolean);
+    const pageInvoiceNumbers = Array.from(
+      new Set(
+        (data || [])
+          .map((invoice: any) => String(invoice?.invoiceNumber || "").trim())
+          .filter(Boolean)
+      )
+    );
+    const invoiceNumberStatuses: Record<string, DuplicateStatus> = {};
+
+    if (pageInvoiceNumbers.length > 0) {
+      const relatedInvoices = await Invoice.find({
+        invoiceNumber: { $in: pageInvoiceNumbers },
+      })
+        .select(
+          "invoiceNumber billing_period currentAmount previousAmount totalAmount customerName customerAddress recordBookCode customerPhone province assignedTo"
+        )
+        .lean();
+
+      const invoiceGroups = new Map<string, Array<Record<string, unknown>>>();
+      relatedInvoices.forEach((invoice: any) => {
+        const invoiceNumber = String(invoice.invoiceNumber || "").trim();
+        if (!invoiceNumber) return;
+
+        const currentGroup = invoiceGroups.get(invoiceNumber) || [];
+        currentGroup.push(invoice);
+        invoiceGroups.set(invoiceNumber, currentGroup);
+      });
+
+      invoiceGroups.forEach((rows, invoiceNumber) => {
+        if (rows.length < 2) return;
+        invoiceNumberStatuses[invoiceNumber] = classifyInvoiceNumberGroup(rows);
+      });
+    }
 
     res.status(200).json({
       success: true,
       data: data,
+      invoiceNumberStatuses,
       summary: {
         totalInvoices: summaryData.totalInvoices,
         totalAmount: summaryData.sumTotalAmount,
@@ -2027,8 +2160,11 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       match.province = selectedProvince;
     }
 
-    if (areaPrefix && areaPrefix !== "all") {
-      addAndCondition(match, { invoiceNumber: buildPrefixRegex(String(areaPrefix)) });
+    const areaPrefixes = parsePrefixList(areaPrefix);
+    if (areaPrefixes.length > 0) {
+      addAndCondition(match, {
+        $or: areaPrefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) })),
+      });
     }
 
     if (filterAssignedUser && filterAssignedUser !== "all") {
