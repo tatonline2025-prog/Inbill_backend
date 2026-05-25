@@ -83,6 +83,17 @@ export const login = async (req: Request, res: Response) => {
 export const register = async (req: Request, res: Response) => {
   try {
     const { userName, password, fullName, province, usertype, phone, stt, areaPrefixes } = req.body;
+    const normalizedAreaPrefixes = Array.isArray(areaPrefixes)
+      ? areaPrefixes
+          .filter(
+            (item): item is { area: string; prefix: string } =>
+              typeof item?.area === "string" &&
+              item.area.trim() !== "" &&
+              typeof item?.prefix === "string" &&
+              item.prefix.trim() !== ""
+          )
+          .map((item) => ({ area: item.area.trim(), prefix: item.prefix.trim() }))
+      : [];
 
     // --- VALIDATION ---
     if (!userName || typeof userName !== "string" || !userName.trim()) {
@@ -93,10 +104,10 @@ export const register = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Mật khẩu phải có ít nhất 6 ký tự." });
     }
 
-    if (!fullName || !province || !usertype || !stt) {
+    if (!fullName || !usertype || !stt || normalizedAreaPrefixes.length === 0) {
       return res
         .status(400)
-        .json({ message: "Vui lòng điền đầy đủ thông tin: Họ và tên, số thứ tự, mật khẩu, tên đăng nhập,...." });
+        .json({ message: "Vui lòng điền đầy đủ thông tin và chọn xã/phường từ danh sách mã vùng." });
     }
 
     const normalizedUsername = userName.trim().toLowerCase();
@@ -118,14 +129,14 @@ export const register = async (req: Request, res: Response) => {
       username: normalizedUsername,
       password: hashedPassword,
       fullName,
-      province,
+      province: typeof province === "string" ? province.trim() : "",
       usertype,
       role,
       phone,
       stt,
       collectionFee: 0,
       createdBy,
-      areaPrefixes: Array.isArray(areaPrefixes) ? areaPrefixes : [],
+      areaPrefixes: normalizedAreaPrefixes,
     });
 
     const userResponse = {

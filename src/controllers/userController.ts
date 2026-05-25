@@ -35,16 +35,28 @@ export const changeInfo = async (req: Request, res: Response) => {
   try {
     const { editinguserId } = req.body;
     const { fullName, province, username, pass, phone, stt, usertype, bankAccount, bankName, areaPrefixes } = req.body.formData;
+    const normalizedAreaPrefixes = Array.isArray(areaPrefixes)
+      ? areaPrefixes
+          .filter(
+            (item): item is { area: string; prefix: string } =>
+              typeof item?.area === "string" &&
+              item.area.trim() !== "" &&
+              typeof item?.prefix === "string" &&
+              item.prefix.trim() !== ""
+          )
+          .map((item) => ({ area: item.area.trim(), prefix: item.prefix.trim() }))
+      : null;
 
     const user = await User.findById(editinguserId);
 
     if (!user) return res.status(404).json({ message: "Người dùng không tồn tại" });
 
-    user.fullName = fullName;
-    user.province = province;
-    user.phone = phone;
-    user.stt = stt;
-    user.username = username;
+    if (typeof fullName === "string") user.fullName = fullName;
+    if (typeof province === "string") user.province = province;
+    if (typeof phone === "string") user.phone = phone;
+    if (typeof stt === "number" && !Number.isNaN(stt)) user.stt = stt;
+    if (typeof stt === "string" && stt.trim() !== "" && !Number.isNaN(Number(stt))) user.stt = Number(stt);
+    if (typeof username === "string") user.username = username;
 
     if (usertype !== undefined && usertype.trim() !== "") {
       user.usertype = usertype;
@@ -58,8 +70,8 @@ export const changeInfo = async (req: Request, res: Response) => {
     }
 
     // Lưu danh sách khu vực + prefix
-    if (Array.isArray(areaPrefixes)) {
-      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = areaPrefixes;
+    if (normalizedAreaPrefixes) {
+      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = normalizedAreaPrefixes;
     }
 
     // Mã hóa mật khẩu mới
@@ -102,8 +114,20 @@ export const changeMyInfo = async (req: Request, res: Response) => {
     if (typeof bankName === "string") user.bankName = bankName;
 
     const { areaPrefixes } = req.body.formData || {};
-    if (Array.isArray(areaPrefixes)) {
-      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = areaPrefixes;
+    const normalizedAreaPrefixes = Array.isArray(areaPrefixes)
+      ? areaPrefixes
+          .filter(
+            (item): item is { area: string; prefix: string } =>
+              typeof item?.area === "string" &&
+              item.area.trim() !== "" &&
+              typeof item?.prefix === "string" &&
+              item.prefix.trim() !== ""
+          )
+          .map((item) => ({ area: item.area.trim(), prefix: item.prefix.trim() }))
+      : null;
+
+    if (normalizedAreaPrefixes) {
+      (user as unknown as { areaPrefixes: { area: string; prefix: string }[] }).areaPrefixes = normalizedAreaPrefixes;
     }
 
     if (typeof pass === "string" && pass.trim() !== "") {
