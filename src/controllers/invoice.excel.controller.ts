@@ -8,6 +8,7 @@ import timezone from "dayjs/plugin/timezone";
 import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertManyCustomerMasters } from "./customerMasterController";
+import { ensureAreaPrefixEntries, hasFlexibleArea } from "../utils/areaPrefix";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -33,6 +34,48 @@ const parsePrefixList = (value: unknown): string[] =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const UNASSIGNED_ASSIGNEE_MATCH = [
+  { assignedTo: { $exists: false } },
+  { assignedTo: null },
+  { assignedTo: "" },
+];
+
+const buildAssignedUserScope = async (assignedUserId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(assignedUserId)) {
+    return null;
+  }
+
+  const assignedObjectId = new mongoose.Types.ObjectId(assignedUserId);
+  const selectedUser = await User.findById(assignedUserId).select("areaPrefixes").lean();
+  if (!selectedUser) {
+    return { assignedTo: assignedObjectId };
+  }
+
+  const normalizedAreas = ensureAreaPrefixEntries((selectedUser as { areaPrefixes?: unknown }).areaPrefixes);
+  if (hasFlexibleArea(normalizedAreas)) {
+    return {
+      $or: [{ assignedTo: assignedObjectId }, ...UNASSIGNED_ASSIGNEE_MATCH],
+    };
+  }
+
+  const prefixes = normalizedAreas.map((entry) => entry.prefix).filter(Boolean);
+  if (prefixes.length === 0) {
+    return { assignedTo: assignedObjectId };
+  }
+
+  return {
+    $or: [
+      { assignedTo: assignedObjectId },
+      {
+        $and: [
+          { $or: UNASSIGNED_ASSIGNEE_MATCH },
+          { $or: prefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) })) },
+        ],
+      },
+    ],
+  };
+};
 
 const normalizeHeaderKey = (raw: string): string =>
   String(raw || "")
@@ -107,7 +150,6 @@ const buildInvoiceDoc = (
   rowIndex: number,
   params: {
     assignedTo?: string;
-    province?: string;
     billingPeriod?: string;
     batchId?: number;
   }
@@ -135,7 +177,6 @@ const buildInvoiceDoc = (
     sortPriority: params.batchId!,
     excelOrder: params.batchId! * 1000000 + rowIndex,
     assignedTo: params.assignedTo || null,
-    province: params.province || "",
     billing_period: params.billingPeriod || "",
   };
 };
@@ -178,7 +219,6 @@ const upsertInvoiceDocs = async (
       currentAmount: doc.currentAmount,
       previousAmount: doc.previousAmount,
       totalAmount: doc.totalAmount,
-      province: doc.province,
       excelRowIndex: doc.excelRowIndex,
       sortPriority: doc.sortPriority,
       excelOrder: doc.excelOrder,
@@ -243,7 +283,6 @@ export const previewExcel = async (req: Request, res: Response) => {
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
           assignedTo: userId,
-          province: String(user.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
           batchId
         })
@@ -286,7 +325,6 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
       .map((row, idx) =>
         buildInvoiceDoc(row, idx + 2, {
           assignedTo: assignedUserId,
-          province: String(req.body.province || ""),
           billingPeriod: String(req.body.billing_period || ""),
           batchId
         })
@@ -320,10 +358,8 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       printStatus,
       assignedUserId,
       billingPeriod,
-      province,
       customerCode,
       stationCode,
-      userprovince,
       isPaid,
       collectionDate,
       areaPrefix,
@@ -345,20 +381,18 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       filter.assignedTo = { $in: userIds.split(",").map((id) => id.trim()) };
     } else if (assignedUserId && assignedUserId !== "all") {
       if (assignedUserId === "no_one") {
-        filter.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
-      } else if (mongoose.Types.ObjectId.isValid(assignedUserId as string)) {
-        filter.assignedTo = new mongoose.Types.ObjectId(assignedUserId as string);
+        filter.$or = UNASSIGNED_ASSIGNEE_MATCH;
+      } else {
+        const assignedScope = await buildAssignedUserScope(String(assignedUserId));
+        if (assignedScope) {
+          Object.assign(filter, assignedScope);
+        }
       }
     }
 
     if (printStatus && printStatus !== "all") {
       filter.printStatus =
         printStatus === "not_printed" || printStatus === "notPrinted" ? { $ne: "printed" } : "printed";
-    }
-
-    const provinceValue = (province || userprovince) as string | undefined;
-    if (provinceValue && provinceValue !== "all") {
-      filter.province = provinceValue;
     }
 
     if (billingPeriod && billingPeriod !== "all") {

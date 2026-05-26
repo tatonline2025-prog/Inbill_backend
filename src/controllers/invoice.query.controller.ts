@@ -4,6 +4,8 @@ import utc from "dayjs/plugin/utc";
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import Invoice from "../models/invoiceModel";
+import User from "../models/userModel";
+import { ensureAreaPrefixEntries, hasFlexibleArea } from "../utils/areaPrefix";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -27,6 +29,48 @@ const parsePrefixList = (value: unknown): string[] =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const UNASSIGNED_ASSIGNEE_MATCH = [
+  { assignedTo: { $exists: false } },
+  { assignedTo: null },
+  { assignedTo: "" },
+];
+
+const buildAssignedUserScope = async (assignedUserId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(assignedUserId)) {
+    return null;
+  }
+
+  const assignedObjectId = new mongoose.Types.ObjectId(assignedUserId);
+  const selectedUser = await User.findById(assignedUserId).select("areaPrefixes").lean();
+  if (!selectedUser) {
+    return { assignedTo: assignedObjectId };
+  }
+
+  const normalizedAreas = ensureAreaPrefixEntries((selectedUser as { areaPrefixes?: unknown }).areaPrefixes);
+  if (hasFlexibleArea(normalizedAreas)) {
+    return {
+      $or: [{ assignedTo: assignedObjectId }, ...UNASSIGNED_ASSIGNEE_MATCH],
+    };
+  }
+
+  const prefixes = normalizedAreas.map((entry) => entry.prefix).filter(Boolean);
+  if (prefixes.length === 0) {
+    return { assignedTo: assignedObjectId };
+  }
+
+  return {
+    $or: [
+      { assignedTo: assignedObjectId },
+      {
+        $and: [
+          { $or: UNASSIGNED_ASSIGNEE_MATCH },
+          { $or: prefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) })) },
+        ],
+      },
+    ],
+  };
+};
 
 const parseBillingPeriodParts = (value: unknown): { month: number; year: number } | null => {
   const match = /^(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
@@ -107,7 +151,7 @@ const classifyInvoiceNumberGroup = (rows: Array<Record<string, unknown>>): Dupli
     return "same_customer_code_parallel";
   }
 
-  const infoFields = ["customerName", "customerAddress", "recordBookCode", "customerPhone", "province"] as const;
+  const infoFields = ["customerName", "customerAddress", "recordBookCode", "customerPhone"] as const;
   const hasInfoConflict = infoFields.some((field) =>
     hasConflictingNonEmptyValues(rows.map((row) => normalizeText(row[field])))
   );
@@ -132,7 +176,6 @@ const classifyInvoiceNumberGroup = (rows: Array<Record<string, unknown>>): Dupli
       customerAddress: normalizeText(row.customerAddress) || resolvedInfo.customerAddress,
       recordBookCode: normalizeText(row.recordBookCode) || resolvedInfo.recordBookCode,
       customerPhone: normalizeText(row.customerPhone) || resolvedInfo.customerPhone,
-      province: normalizeText(row.province) || resolvedInfo.province,
       assignedTo: normalizeAssignee(row.assignedTo) || resolvedAssignee,
     })
   );
@@ -503,21 +546,12 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
     }
 
     if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one" && req.user?.role === "admin") {
-      match.$or = [
-        // Hóa đơn đã được giao cho chính người đó
-        { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
-
-        {
-          $and: [
-            {
-              $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }],
-            },
-            { province: userprovince },
-          ],
-        },
-      ];
+      const assignedScope = await buildAssignedUserScope(String(assignedUser));
+      if (assignedScope) {
+        Object.assign(match, assignedScope);
+      }
     } else if (assignedUser === "no_one") {
-      match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+      match.$or = UNASSIGNED_ASSIGNEE_MATCH;
     } else {
       match.$or = [
         { assignedTo: { $exists: true } },
@@ -525,10 +559,6 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
         { assignedTo: null },
         { assignedTo: "" },
       ];
-    }
-
-    if (province && province !== "all") {
-      match.province = province;
     }
 
     if (billingPeriod && billingPeriod !== "all") {
@@ -810,9 +840,7 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       const relatedInvoices = await Invoice.find({
         invoiceNumber: { $in: pageInvoiceNumbers },
       })
-        .select(
-          "invoiceNumber billing_period currentAmount previousAmount totalAmount customerName customerAddress recordBookCode customerPhone province assignedTo"
-        )
+        .select("invoiceNumber billing_period currentAmount previousAmount totalAmount customerName customerAddress recordBookCode customerPhone assignedTo")
         .lean();
 
       const invoiceGroups = new Map<string, Array<Record<string, unknown>>>();
@@ -905,10 +933,6 @@ export const fetchUserInvoices = async (req: Request, res: Response) => {
 
     if (collectionStatus && collectionStatus !== "all") {
       match.collectionStatus = collectionStatus;
-    }
-
-    if (province && province !== "all") {
-      match.province = province;
     }
 
     if (collectionDate && collectionStatus === "collected") {
@@ -1090,17 +1114,12 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
     }
 
     if (assignedUser && assignedUser !== "all" && assignedUser !== "no_one") {
-      match.$or = [
-        { assignedTo: new mongoose.Types.ObjectId(assignedUser as string) },
-        {
-          $and: [
-            { $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }] },
-            { province: userprovince },
-          ],
-        },
-      ];
+      const assignedScope = await buildAssignedUserScope(String(assignedUser));
+      if (assignedScope) {
+        Object.assign(match, assignedScope);
+      }
     } else if (assignedUser === "no_one") {
-      match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+      match.$or = UNASSIGNED_ASSIGNEE_MATCH;
     } else {
       match.$or = [
         { assignedTo: { $exists: true } },
@@ -1108,10 +1127,6 @@ export const fetchInvoicesByList = async (req: Request, res: Response) => {
         { assignedTo: null },
         { assignedTo: "" },
       ];
-    }
-
-    if (province && province !== "all") {
-      match.province = province;
     }
 
     if (collectionDate && collectionStatus === "collected") {
@@ -2172,7 +2187,6 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       filterCollection,
       filterAssignedUser,
       isPaidFilter,
-      selectedProvince,
       areaPrefix,
       billingPeriod,
       searchType,
@@ -2203,10 +2217,6 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       match.collectionStatus = filterCollection;
     }
 
-    if (selectedProvince && selectedProvince !== "all") {
-      match.province = selectedProvince;
-    }
-
     if (billingPeriod && billingPeriod !== "all") {
       match.billing_period = String(billingPeriod).trim();
     }
@@ -2220,9 +2230,12 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
 
     if (filterAssignedUser && filterAssignedUser !== "all") {
       if (filterAssignedUser === "no_one") {
-        match.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+        match.$or = UNASSIGNED_ASSIGNEE_MATCH;
       } else {
-        match.assignedTo = filterAssignedUser;
+        const assignedScope = await buildAssignedUserScope(String(filterAssignedUser));
+        if (assignedScope) {
+          Object.assign(match, assignedScope);
+        }
       }
     }
 

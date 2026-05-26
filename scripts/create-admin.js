@@ -23,6 +23,7 @@ const bcrypt = require('bcryptjs');
       role: 'admin',
       usertype: 'admin',
       province: '',
+      areaPrefixes: [{ area: 'Tự do', prefix: '' }],
       stt: 0,
       createdAt: new Date(),
       updatedAt: new Date(),

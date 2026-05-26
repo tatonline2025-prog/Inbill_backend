@@ -2,59 +2,42 @@ import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    // Tên đăng nhập, không được trùng
     username: { type: String, required: true, unique: true, trim: true },
-
-    // Mật khẩu đã được mã hoá (bắt buộc)
     password: { type: String, required: true },
-
-    // Tên đầy đủ của người dùng
     fullName: { type: String, required: true },
-
     phone: { type: String, unique: true },
-
     stt: { type: Number, default: "" },
-
     bankAccount: { type: String, unique: true },
     bankName: { type: String },
-
     province: {
       type: String,
-      required: false, // Có thể để optional nếu không bắt buộc
+      required: false,
       trim: true,
       default: "",
     },
-
     collectionFee: { type: String },
     usertype: { type: String },
-
-    // Danh sách khu vực (xã/phường) và prefix mã hóa đơn
     areaPrefixes: {
       type: [
         {
-          area: { type: String, required: true },
-          prefix: { type: String, required: true },
+          area: { type: String, required: true, trim: true },
+          prefix: { type: String, required: false, trim: true, default: "" },
         },
       ],
       default: [],
     },
-
-    // Dùng để phân quyền hệ thống
     role: {
       type: String,
-      enum: ["admin", "user"], // Chỉ chấp nhận 2 giá trị này
+      enum: ["admin", "user"],
       default: "user",
     },
-
-    // Lưu ID của admin đã tạo ra user này (giúp cho việc truy vết)
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Tham chiếu đến chính model User
-      default: null, // Admin đầu tiên sẽ không có ai tạo ra
+      ref: "User",
+      default: null,
     },
   },
   {
-    // Tự động thêm 2 trường createdAt và updatedAt
     timestamps: true,
   }
 );

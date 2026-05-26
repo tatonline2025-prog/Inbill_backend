@@ -56,9 +56,6 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
         invoice.collectionStatus = "collected";
         invoice.collectionDate = new Date();
         invoice.collectionDateAdminEdited = false;
-        if (typeof req.user?.province === "string" && req.user.province.trim() !== "") {
-          invoice.province = req.user.province;
-        }
         // Admin không trở thành người phụ trách; user thường đã thu sau cùng sẽ là người phụ trách
         if (!isAdmin) {
           invoice.assignedTo = req.user?._id as unknown as mongoose.Types.ObjectId;
@@ -194,13 +191,13 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
 
 /**
  * Đồng bộ thông tin giữa các hóa đơn cùng invoiceNumber (giống mã KH):
- * - Với mỗi field text (customerName, customerAddress, recordBookCode, customerPhone, province),
+ * - Với mỗi field text (customerName, customerAddress, recordBookCode, customerPhone),
  *   nếu một bản ghi đang trống mà bản ghi cùng invoiceNumber có giá trị → copy qua.
  * - KHÔNG động đến: collectionStatus, collectionDate, isPaid, printStatus, billing_period, assignedTo, currentAmount/previousAmount/totalAmount.
  */
 export const syncDuplicateInvoiceInfo = async (_req: Request, res: Response) => {
   try {
-    const FIELDS = ["customerName", "customerAddress", "recordBookCode", "customerPhone", "province"] as const;
+    const FIELDS = ["customerName", "customerAddress", "recordBookCode", "customerPhone"] as const;
     const isEmpty = (v: any) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 
     // 1) Lấy danh sách invoiceNumber bị trùng (>=2 bản ghi)
@@ -325,7 +322,6 @@ export const cleanupRedundantDuplicates = async (_req: Request, res: Response) =
           norm(r.currentAmount),
           norm(r.previousAmount),
           norm(r.totalAmount),
-          norm(r.province),
         ].join("||");
       const first = sig(rows[0]);
       const allSame = rows.every((r) => sig(r) === first);
