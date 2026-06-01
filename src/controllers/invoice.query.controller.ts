@@ -2213,6 +2213,14 @@ export const fetchAllInvoicesForCopy = async (req: Request, res: Response) => {
       const startOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").startOf("day").toDate();
       const endOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").endOf("day").toDate();
       match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+    } else if (filterCollection === "collected") {
+      match.collectionStatus = "collected";
+      if (collectionDate) {
+        const targetDate = String(collectionDate);
+        const startOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").startOf("day").toDate();
+        const endOfDay = dayjs.tz(targetDate, "Asia/Ho_Chi_Minh").endOf("day").toDate();
+        match.collectionDate = { $gte: startOfDay, $lte: endOfDay };
+      }
     } else if (filterCollection && filterCollection !== "all" && filterCollection !== "duplicates") {
       match.collectionStatus = filterCollection;
     }

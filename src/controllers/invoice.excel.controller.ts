@@ -9,6 +9,8 @@ import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertManyCustomerMasters } from "./customerMasterController";
 import { ensureAreaPrefixEntries, hasFlexibleArea } from "../utils/areaPrefix";
+import { parseMoneyNumber } from "../utils/money";
+import { normalizeRecordBookCode } from "../utils/recordBookCode";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -93,6 +95,9 @@ const normalizeMoneyString = (value: unknown): string => {
   return negative ? `-${digits}` : digits;
 };
 
+const EXCEL_MONEY_KEYS = new Set(["kyNay", "kyTruoc", "tongTien"]);
+const EXCEL_PLAIN_NUMBER_FORMAT = "0";
+
 const cellToString = (value: unknown): string => {
   if (value === null || value === undefined) return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -161,14 +166,14 @@ const buildInvoiceDoc = (
   const customerAddress = pickField(row, ["Địa chỉ", "customerAddress", "dia chi"]) || "";
   const recordBookCode = pickField(row, ["Trạm", "recordBookCode", "tram"]) || "";
   const totalAmount = normalizeMoneyString(pickField(row, ["Tổng tiền", "totalAmount", "tong tien"]));
-  const currentAmount = normalizeMoneyString(pickField(row, ["Kỳ nay", "currentAmount", "ky nay"]));
+  const currentAmount = normalizeMoneyString(pickField(row, ["Kỳ này", "Kỳ nay", "currentAmount", "ky nay"]));
   const previousAmount = normalizeMoneyString(pickField(row, ["Kỳ trước", "previousAmount", "ky truoc"]));
 
   return {
     invoiceNumber: invoiceNumber.trim(),
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
-    recordBookCode: recordBookCode.trim(),
+    recordBookCode: normalizeRecordBookCode(recordBookCode),
     totalAmount,
     currentAmount,
     previousAmount,
@@ -189,7 +194,22 @@ const makeWorkbookBuffer = async (
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(sheetName);
   worksheet.columns = columns;
-  rows.forEach((row) => worksheet.addRow(row));
+
+  columns.forEach((column) => {
+    if (EXCEL_MONEY_KEYS.has(column.key)) {
+      const worksheetColumn = worksheet.getColumn(column.key);
+      worksheetColumn.numFmt = EXCEL_PLAIN_NUMBER_FORMAT;
+      worksheetColumn.alignment = { horizontal: "right" };
+    }
+  });
+
+  rows.forEach((row) => {
+    const normalizedRow = Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, EXCEL_MONEY_KEYS.has(key) ? parseMoneyNumber(value) : value])
+    );
+    worksheet.addRow(normalizedRow);
+  });
+
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
 
@@ -467,7 +487,7 @@ export const exportInvoicesToExcel = async (req: Request, res: Response) => {
       [
         { header: "STT", key: "stt", width: 5 },
         { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
-        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ này", key: "kyNay", width: 15 },
         { header: "Kỳ trước", key: "kyTruoc", width: 12 },
         { header: "Tổng tiền", key: "tongTien", width: 15 },
         { header: "Tên", key: "ten", width: 35 },
@@ -536,7 +556,7 @@ export const exportCollectedInvoicesByDate = async (req: Request, res: Response)
       [
         { header: "STT", key: "stt", width: 5 },
         { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
-        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ này", key: "kyNay", width: 15 },
         { header: "Kỳ trước", key: "kyTruoc", width: 12 },
         { header: "Tổng tiền", key: "tongTien", width: 15 },
         { header: "Tên", key: "ten", width: 35 },
@@ -604,7 +624,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
       [
         { header: "STT", key: "stt", width: 5 },
         { header: "Mã khách hàng", key: "maKhachHang", width: 17 },
-        { header: "Kỳ nay", key: "kyNay", width: 15 },
+        { header: "Kỳ này", key: "kyNay", width: 15 },
         { header: "Kỳ trước", key: "kyTruoc", width: 12 },
         { header: "Tổng tiền", key: "tongTien", width: 15 },
         { header: "Tên", key: "ten", width: 35 },
@@ -715,7 +735,7 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
       [
         { header: "STT", key: "stt", width: 5 },
         { header: "Mã khách hàng", key: "maKhachHang", width: 15 },
-        { header: "Kỳ nay", key: "kyNay", width: 12 },
+        { header: "Kỳ này", key: "kyNay", width: 12 },
         { header: "Kỳ trước", key: "kyTruoc", width: 12 },
         { header: "Tổng tiền", key: "tongTien", width: 14 },
         { header: "Tên", key: "ten", width: 25 },

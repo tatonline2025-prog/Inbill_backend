@@ -3,6 +3,8 @@ import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertCustomerMasterFromInvoice } from "./customerMasterController";
 import mongoose from "mongoose";
+import { parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
+import { normalizeRecordBookCode } from "../utils/recordBookCode";
 
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
@@ -25,6 +27,19 @@ const normalizeMoneyString = (value: any): string => {
   }
 
   return "0";
+};
+
+const parseCollectionDateInput = (value: unknown): Date | null => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+
+  const parsed = new Date(`${raw}T12:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed;
 };
 
 export const toggleInvoiceStatus = async (req: Request, res: Response) => {
@@ -113,7 +128,7 @@ export const updateCollectionDateByAdmin = async (req: Request, res: Response) =
 /**
  * Cập nhật hàng loạt cho các hóa đơn được chọn.
  * PATCH /api/invoices/bulk-update
- * body: { ids: string[], updates: { recordBookCode?, assignedTo?, billing_period?, collectionStatus? } }
+ * body: { ids: string[], updates: { recordBookCode?, assignedTo?, billing_period?, collectionStatus?, collectionDate? } }
  */
 export const bulkUpdateInvoices = async (req: Request, res: Response) => {
   try {
@@ -127,6 +142,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
         assignedTo?: string | null;
         billing_period?: string;
         collectionStatus?: "collected" | "not_collected";
+        collectionDate?: string | null;
       };
     };
 
@@ -142,7 +158,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     const $unset: Record<string, unknown> = {};
 
     if (typeof updates.recordBookCode === "string" && updates.recordBookCode.trim() !== "") {
-      $set.recordBookCode = updates.recordBookCode.trim();
+      $set.recordBookCode = normalizeRecordBookCode(updates.recordBookCode);
     }
     if (typeof updates.billing_period === "string" && updates.billing_period.trim() !== "") {
       $set.billing_period = updates.billing_period.trim();
@@ -167,6 +183,27 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
       $set.collectionStatus = "not_collected";
       $set.collectionDate = null;
       $set.collectionDateAdminEdited = false;
+    }
+
+    if (updates.collectionDate !== undefined) {
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Chá»‰ admin Ä‘Æ°á»£c phÃ©p cáº­p nháº­t ngÃ y thu hÃ ng loáº¡t." });
+      }
+
+      if (updates.collectionDate === null || updates.collectionDate === "") {
+        $set.collectionStatus = "not_collected";
+        $set.collectionDate = null;
+        $set.collectionDateAdminEdited = false;
+      } else {
+        const parsedCollectionDate = parseCollectionDateInput(updates.collectionDate);
+        if (!parsedCollectionDate) {
+          return res.status(400).json({ message: "NgÃ y thu khÃ´ng há»£p lá»‡ (YYYY-MM-DD)." });
+        }
+
+        $set.collectionStatus = "collected";
+        $set.collectionDate = parsedCollectionDate;
+        $set.collectionDateAdminEdited = true;
+      }
     }
 
     if (Object.keys($set).length === 0) {
@@ -449,12 +486,19 @@ export const createInvoice = async (req: Request, res: Response) => {
       billing_period,
       currentAmount,
       previousAmount,
+      totalAmount,
       recordBookCode,
       assignedTo,
     } = req.body.newInvoice;
 
+    const resolvedAmounts = resolveInvoiceAmounts({
+      currentAmount,
+      previousAmount,
+      totalAmount,
+    });
+
     // ✅ Kiểm tra thiếu dữ liệu
-    if (!invoiceNumber || !customerName || !billing_period || !currentAmount || !previousAmount) {
+    if (!invoiceNumber || !customerName || !billing_period || !resolvedAmounts.hasAnyAmount) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
@@ -467,8 +511,9 @@ export const createInvoice = async (req: Request, res: Response) => {
       finalAssignedTo = req.user?._id;
     }
 
-    const currentAmountStr = normalizeMoneyString(currentAmount);
-    const previousAmountStr = normalizeMoneyString(previousAmount);
+    const currentAmountStr = resolvedAmounts.currentAmount;
+    const previousAmountStr = resolvedAmounts.previousAmount;
+    const totalAmountStr = resolvedAmounts.totalAmount;
 
     // ✅ Trùng khóa gộp (Mã KH + Kỳ TT + Người phụ trách) → CHẶN, cảnh báo cho admin.
     const existInvoice = await Invoice.findOne({
@@ -492,8 +537,8 @@ export const createInvoice = async (req: Request, res: Response) => {
       billing_period,
       currentAmount: currentAmountStr,
       previousAmount: previousAmountStr,
-      totalAmount: Number(currentAmountStr) + Number(previousAmountStr),
-      recordBookCode: recordBookCode,
+      totalAmount: totalAmountStr,
+      recordBookCode: normalizeRecordBookCode(recordBookCode),
       assignedTo: finalAssignedTo,
       createdAt: new Date(),
     });
@@ -541,18 +586,19 @@ export const updateInvoice = async (req: Request, res: Response) => {
     console.log("req.body:", req.body);
     console.log("req.body.formData:", req.body.formData);
 
-    // Normalize amounts to handle empty strings
-    const normalizedCurrentAmount = normalizeMoneyString(currentAmount);
-    const normalizedPreviousAmount = normalizeMoneyString(previousAmount);
-    const normalizedTotalAmount = normalizeMoneyString(totalAmount);
+    const resolvedAmounts = resolveInvoiceAmounts({
+      currentAmount,
+      previousAmount,
+      totalAmount,
+    });
 
     // billing_period có thể rỗng khi cập nhật (giữ nguyên kỳ cũ)
-    if (!invoiceId || !customerName || !normalizedCurrentAmount || !normalizedPreviousAmount) {
+    if (!invoiceId || !customerName || !resolvedAmounts.hasAnyAmount) {
       console.log("=== VALIDATION FAILED ===");
       console.log("invoiceId:", invoiceId);
       console.log("customerName:", customerName);
-      console.log("normalizedCurrentAmount:", normalizedCurrentAmount);
-      console.log("normalizedPreviousAmount:", normalizedPreviousAmount);
+      console.log("normalizedCurrentAmount:", resolvedAmounts.currentAmount);
+      console.log("normalizedPreviousAmount:", resolvedAmounts.previousAmount);
       console.log("billing_period:", billing_period);
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
@@ -582,17 +628,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
     invoice.customerName = customerName;
     invoice.customerPhone = customerPhone || "";
     invoice.customerAddress = customerAddress || "";
-    invoice.currentAmount = normalizeMoneyString(currentAmount);
-    invoice.previousAmount = normalizeMoneyString(previousAmount);
-    invoice.totalAmount = String(
-      Number(normalizeMoneyString(currentAmount)) + Number(normalizeMoneyString(previousAmount))
-    );
+    invoice.currentAmount = resolvedAmounts.currentAmount;
+    invoice.previousAmount = resolvedAmounts.previousAmount;
+    invoice.totalAmount = resolvedAmounts.totalAmount;
     invoice.assignedTo = finalAssignedTo;
     invoice.updateBy = new mongoose.Types.ObjectId(user._id as string);
     // Chỉ cập nhật billing_period nếu có giá trị mới hợp lệ, giữ nguyên nếu không
     invoice.billing_period = billing_period ?? invoice.billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
-    invoice.recordBookCode = recordBookCode;
+    invoice.recordBookCode = normalizeRecordBookCode(recordBookCode);
 
     // console.log(invoice);
 
@@ -699,7 +743,7 @@ export const deleteByBillingPeriod = async (req: Request, res: Response) => {
 // ✅ Thêm hóa đơn nhanh (Quick Add Invoice)
 export const quickAddInvoice = async (req: Request, res: Response) => {
   try {
-    const { invoiceNumber, customerName, totalAmount } = req.body;
+    const { invoiceNumber, customerName, totalAmount, recordBookCode } = req.body;
 
     // ✅ Kiểm tra dữ liệu đầu vào
     if (!invoiceNumber || !invoiceNumber.trim()) {
@@ -710,11 +754,11 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Vui lòng nhập tên khách hàng" });
     }
 
-    if (!totalAmount || isNaN(Number(totalAmount)) || Number(totalAmount) <= 0) {
+    const resolvedAmounts = resolveInvoiceAmounts({ totalAmount });
+    if (!resolvedAmounts.hasAnyAmount || parseMoneyNumber(resolvedAmounts.totalAmount) <= 0) {
       return res.status(400).json({ message: "Vui lòng nhập tổng tiền hợp lệ" });
     }
 
-    const normalizedTotalAmount = normalizeMoneyString(totalAmount);
     const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
     const currentYear = new Date().getFullYear();
     const billing_period = `${currentMonth}/${currentYear}`;
@@ -726,9 +770,10 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
     const newInvoice = new Invoice({
       invoiceNumber: invoiceNumber.trim(),
       customerName: customerName.trim(),
-      currentAmount: normalizedTotalAmount,
-      previousAmount: "0",
-      totalAmount: normalizedTotalAmount,
+      currentAmount: resolvedAmounts.currentAmount,
+      previousAmount: resolvedAmounts.previousAmount,
+      totalAmount: resolvedAmounts.totalAmount,
+      recordBookCode: normalizeRecordBookCode(recordBookCode),
       billing_period,
       assignedTo: req.user?._id || null,
       uploadedBy: req.user?._id || null,
