@@ -1,57 +1,62 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# ==========================================
-# DEPLOY SCRIPT - Deploy updated CORS configuration
-# ==========================================
+APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-migration/allbill-backend-base}"
+DEPLOY_REMOTE="${DEPLOY_REMOTE:-origin}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-inbill_backend}"
+APP_URL="${APP_URL:-http://localhost:3000}"
 
 echo "=========================================="
-echo "STARTING DEPLOY"
+echo "STARTING BACKEND DEPLOY"
 echo "Date: $(date)"
+echo "App dir: $APP_DIR"
+echo "Branch: $DEPLOY_BRANCH"
+echo "Compose project: $COMPOSE_PROJECT_NAME"
 echo "=========================================="
 
-# Step 1: Pull latest code
-echo ""
-echo "=== Step 1: Pulling latest code ==="
-cd /root/Inbill_backend
-git pull
-echo "✓ Code pulled"
+cd "$APP_DIR"
 
-# Step 2: Build and restart Docker
-echo ""
-echo "=== Step 2: Building and restarting Docker ==="
-docker compose down
-docker compose up -d --build
-echo "✓ Docker containers started"
+if [[ ! -d .git ]]; then
+  echo "Missing .git in $APP_DIR"
+  exit 1
+fi
 
-# Step 3: Wait for container to be ready
-echo ""
-echo "=== Step 3: Waiting for container to start ==="
+if [[ ! -f .env ]]; then
+  echo "Missing .env in $APP_DIR"
+  exit 1
+fi
+
+echo
+echo "=== Step 1: Sync code from GitHub ==="
+git fetch "$DEPLOY_REMOTE"
+git checkout "$DEPLOY_BRANCH"
+git reset --hard "$DEPLOY_REMOTE/$DEPLOY_BRANCH"
+echo "Code synced to $(git rev-parse --short HEAD)"
+
+echo
+echo "=== Step 2: Build and restart Docker ==="
+docker compose -p "$COMPOSE_PROJECT_NAME" up -d --build
+echo "Containers rebuilt"
+
+echo
+echo "=== Step 3: Wait for app ==="
 sleep 10
 
-# Step 4: Check container status
-echo ""
+echo
 echo "=== Step 4: Container status ==="
-docker compose ps
+docker compose -p "$COMPOSE_PROJECT_NAME" ps
 
-# Step 5: Check logs
-echo ""
+echo
 echo "=== Step 5: Recent logs ==="
-docker compose logs --tail=50 app
+docker compose -p "$COMPOSE_PROJECT_NAME" logs --tail=50 app
 
-# Step 6: Health check
-echo ""
-echo "=== Step 6: Health check ==="
-curl -s http://localhost:3000/health || echo "Health check failed"
+echo
+echo "=== Step 6: Basic HTTP probe ==="
+HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/" || true)"
+echo "GET $APP_URL/ -> ${HTTP_CODE:-no-response}"
 
-# Step 7: Test CORS preflight
-echo ""
-echo "=== Step 7: Testing CORS preflight ==="
-curl -I -X OPTIONS https://hoadon.dvtienich.vn/api/auth/login \
-  -H "Origin: https://inbill.dvtienich.vn" \
-  -H "Access-Control-Request-Method: POST"
-
-echo ""
+echo
 echo "=========================================="
 echo "DEPLOY COMPLETED"
 echo "=========================================="
-
