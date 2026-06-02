@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import CustomerMaster from "../models/customerMasterModel";
 import Invoice from "../models/invoiceModel";
+import { normalizeRecordBookCode } from "../utils/recordBookCode";
 
 const norm = (v: any) => (v === null || v === undefined ? "" : String(v).trim());
 const hasVal = (v: any) => norm(v) !== "";
@@ -22,7 +23,7 @@ export const upsertCustomerMasterFromInvoice = async (inv: any, opts?: { force?:
     customerAddress: norm(inv.customerAddress),
     customerPhone: norm(inv.customerPhone),
     province: norm(inv.province),
-    recordBookCode: norm(inv.recordBookCode),
+    recordBookCode: normalizeRecordBookCode(inv.recordBookCode),
     assignedTo: inv.assignedTo || null,
   };
   const $set: Record<string, any> = {};
@@ -75,12 +76,63 @@ export const upsertManyCustomerMasters = async (invoices: any[]) => {
       if (score(inv) > score(prev)) byCode.set(code, inv);
     }
   });
-  for (const inv of byCode.values()) {
-    try {
-      await upsertCustomerMasterFromInvoice(inv);
-    } catch (e) {
-      console.error("upsertManyCustomerMasters error for", inv?.invoiceNumber, e);
+  const codes = Array.from(byCode.keys());
+  if (codes.length === 0) return;
+
+  const existingItems = await CustomerMaster.find({ invoiceNumber: { $in: codes } })
+    .select("invoiceNumber customerName customerAddress customerPhone province recordBookCode assignedTo")
+    .lean();
+  const existingMap = new Map(existingItems.map((item) => [norm(item.invoiceNumber), item]));
+
+  const ops = Array.from(byCode.values()).map((inv) => {
+    const invoiceNumber = norm(inv.invoiceNumber);
+    const existing = existingMap.get(invoiceNumber);
+    const fields: Record<string, any> = {
+      customerName: norm(inv.customerName),
+      customerAddress: norm(inv.customerAddress),
+      customerPhone: norm(inv.customerPhone),
+      province: norm(inv.province),
+      recordBookCode: normalizeRecordBookCode(inv.recordBookCode),
+      assignedTo: inv.assignedTo || null,
+    };
+
+    const $set: Record<string, any> = {};
+    if (!existing) {
+      Object.entries(fields).forEach(([key, value]) => {
+        if (key === "assignedTo") $set[key] = value;
+        else if (hasVal(value)) $set[key] = value;
+      });
+      $set.lastBillingPeriod = norm(inv.billing_period);
+      $set.seenCount = 1;
+    } else {
+      Object.entries(fields).forEach(([key, value]) => {
+        if (key === "assignedTo") {
+          if (!existing.assignedTo && value) $set[key] = value;
+        } else if (!hasVal((existing as any)[key]) && hasVal(value)) {
+          $set[key] = value;
+        }
+      });
+      if (hasVal(inv.billing_period)) $set.lastBillingPeriod = norm(inv.billing_period);
     }
+
+    const update: any = { $set };
+    if (!existing) {
+      update.$setOnInsert = { invoiceNumber };
+    } else {
+      update.$inc = { seenCount: 1 };
+    }
+
+    return {
+      updateOne: {
+        filter: { invoiceNumber },
+        update,
+        upsert: true,
+      },
+    };
+  });
+
+  if (ops.length > 0) {
+    await CustomerMaster.bulkWrite(ops, { ordered: false });
   }
 };
 

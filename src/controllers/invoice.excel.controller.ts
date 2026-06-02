@@ -9,7 +9,7 @@ import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertManyCustomerMasters } from "./customerMasterController";
 import { ensureAreaPrefixEntries, hasFlexibleArea } from "../utils/areaPrefix";
-import { parseMoneyNumber } from "../utils/money";
+import { parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
 import { normalizeRecordBookCode } from "../utils/recordBookCode";
 
 dayjs.extend(utc);
@@ -86,14 +86,14 @@ const normalizeHeaderKey = (raw: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
-const normalizeMoneyString = (value: unknown): string => {
-  if (value === null || value === undefined || value === "") return "0";
-  const original = String(value).trim();
-  const negative = original.startsWith("-");
-  const digits = original.replace(/[.,\s]/g, "").replace(/[^0-9]/g, "");
-  if (!digits) return "0";
-  return negative ? `-${digits}` : digits;
-};
+const normalizeLookupValue = (value: unknown): string =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const ASSIGNEE_HEADER_KEYS = ["NPT/CTV", "NPT", "CTV", "Người phụ trách", "Nguoi phu trach", "assignedTo"];
 
 const EXCEL_MONEY_KEYS = new Set(["kyNay", "kyTruoc", "tongTien"]);
 const EXCEL_PLAIN_NUMBER_FORMAT = "0";
@@ -150,6 +150,68 @@ const pickField = (row: RowMap, keys: string[]): string => {
   return "";
 };
 
+type AssigneeResolveResult =
+  | { status: "empty"; userId: null }
+  | { status: "matched"; userId: string }
+  | { status: "not_found" }
+  | { status: "ambiguous" };
+
+const buildAssigneeLookup = async () => {
+  const users = await User.find({})
+    .select("_id fullName username phone")
+    .lean<Array<{ _id: mongoose.Types.ObjectId | string; fullName?: string; username?: string; phone?: string }>>();
+
+  const directMap = new Map<string, string>();
+  const collisions = new Set<string>();
+
+  const register = (value: unknown, userId: string) => {
+    const key = normalizeLookupValue(value);
+    if (!key) return;
+    const existingUserId = directMap.get(key);
+    if (existingUserId && existingUserId !== userId) {
+      collisions.add(key);
+      return;
+    }
+    directMap.set(key, userId);
+  };
+
+  users.forEach((user) => {
+    const userId = String(user._id);
+    register(user.fullName, userId);
+    register(user.username, userId);
+    register(user.phone, userId);
+  });
+
+  return {
+    resolve(rawValue: string): AssigneeResolveResult {
+      const lookupKey = normalizeLookupValue(rawValue);
+      if (!lookupKey) {
+        return { status: "empty", userId: null };
+      }
+      if (collisions.has(lookupKey)) {
+        return { status: "ambiguous" };
+      }
+      const userId = directMap.get(lookupKey);
+      if (!userId) {
+        return { status: "not_found" };
+      }
+      return { status: "matched", userId };
+    },
+  };
+};
+
+const formatAssigneeImportError = (
+  prefix: string,
+  rows: Array<{ rowIndex: number; value: string }>
+): string => {
+  const preview = rows
+    .slice(0, 8)
+    .map(({ rowIndex, value }) => `dòng ${rowIndex}: "${value}"`)
+    .join(", ");
+  const remaining = rows.length > 8 ? ` và ${rows.length - 8} dòng khác` : "";
+  return `${prefix}: ${preview}${remaining}.`;
+};
+
 const buildInvoiceDoc = (
   row: RowMap,
   rowIndex: number,
@@ -165,18 +227,20 @@ const buildInvoiceDoc = (
   const customerName = pickField(row, ["Tên", "customerName", "ten"]) || "";
   const customerAddress = pickField(row, ["Địa chỉ", "customerAddress", "dia chi"]) || "";
   const recordBookCode = pickField(row, ["Trạm", "recordBookCode", "tram"]) || "";
-  const totalAmount = normalizeMoneyString(pickField(row, ["Tổng tiền", "totalAmount", "tong tien"]));
-  const currentAmount = normalizeMoneyString(pickField(row, ["Kỳ này", "Kỳ nay", "currentAmount", "ky nay"]));
-  const previousAmount = normalizeMoneyString(pickField(row, ["Kỳ trước", "previousAmount", "ky truoc"]));
+  const resolvedAmounts = resolveInvoiceAmounts({
+    totalAmount: pickField(row, ["Tổng tiền", "totalAmount", "tong tien"]),
+    currentAmount: pickField(row, ["Kỳ này", "Kỳ nay", "currentAmount", "ky nay"]),
+    previousAmount: pickField(row, ["Kỳ trước", "previousAmount", "ky truoc"]),
+  });
 
   return {
     invoiceNumber: invoiceNumber.trim(),
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
     recordBookCode: normalizeRecordBookCode(recordBookCode),
-    totalAmount,
-    currentAmount,
-    previousAmount,
+    totalAmount: resolvedAmounts.totalAmount,
+    currentAmount: resolvedAmounts.currentAmount,
+    previousAmount: resolvedAmounts.previousAmount,
     issueDate: new Date(),
     excelRowIndex: rowIndex,
     sortPriority: params.batchId!,
@@ -184,6 +248,54 @@ const buildInvoiceDoc = (
     assignedTo: params.assignedTo || null,
     billing_period: params.billingPeriod || "",
   };
+};
+
+const buildDocsFromRows = async ({
+  rows,
+  billingPeriod,
+  batchId,
+  fallbackAssignedTo,
+}: {
+  rows: RowMap[];
+  billingPeriod: string;
+  batchId: number;
+  fallbackAssignedTo?: string;
+}) => {
+  const assigneeLookup = await buildAssigneeLookup();
+  const docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>> = [];
+  const unmatchedAssignees: Array<{ rowIndex: number; value: string }> = [];
+  const ambiguousAssignees: Array<{ rowIndex: number; value: string }> = [];
+
+  rows.forEach((row, idx) => {
+    const rowIndex = idx + 2;
+    const rowAssigneeValue = pickField(row, ASSIGNEE_HEADER_KEYS);
+    let assignedTo = fallbackAssignedTo || undefined;
+
+    if (rowAssigneeValue) {
+      const resolved = assigneeLookup.resolve(rowAssigneeValue);
+      if (resolved.status === "matched") {
+        assignedTo = resolved.userId;
+      } else if (resolved.status === "ambiguous") {
+        ambiguousAssignees.push({ rowIndex, value: rowAssigneeValue });
+        return;
+      } else if (resolved.status === "not_found") {
+        unmatchedAssignees.push({ rowIndex, value: rowAssigneeValue });
+        return;
+      }
+    }
+
+    const doc = buildInvoiceDoc(row, rowIndex, {
+      assignedTo,
+      billingPeriod,
+      batchId,
+    });
+
+    if (doc) {
+      docs.push(doc);
+    }
+  });
+
+  return { docs, unmatchedAssignees, ambiguousAssignees };
 };
 
 const makeWorkbookBuffer = async (
@@ -275,6 +387,7 @@ const upsertInvoiceDocs = async (
 
 export const previewExcel = async (req: Request, res: Response) => {
   try {
+    const startedAt = Date.now();
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (!files?.excelFile?.length) {
       return res.status(400).json({ message: "Khách hàng không tìm thấy file được tải lên." });
@@ -299,25 +412,40 @@ export const previewExcel = async (req: Request, res: Response) => {
 
     const rows = parseWorksheetRows(worksheet);
     const batchId = Date.now();
-    const docs = rows
-      .map((row, idx) =>
-        buildInvoiceDoc(row, idx + 2, {
-          assignedTo: userId,
-          billingPeriod: String(req.body.billing_period || ""),
-          batchId
-        })
-      )
-      .filter(Boolean);
+    const { docs, unmatchedAssignees, ambiguousAssignees } = await buildDocsFromRows({
+      rows,
+      fallbackAssignedTo: userId,
+      billingPeriod: String(req.body.billing_period || ""),
+      batchId,
+    });
+
+    if (ambiguousAssignees.length > 0) {
+      return res.status(400).json({
+        message: formatAssigneeImportError(
+          "Có nhiều người dùng trùng với cột người phụ trách, cần chỉnh lại file Excel",
+          ambiguousAssignees
+        ),
+      });
+    }
+
+    if (unmatchedAssignees.length > 0) {
+      return res.status(400).json({
+        message: formatAssigneeImportError("Không tìm thấy người phụ trách trong file Excel", unmatchedAssignees),
+      });
+    }
 
     if (!docs.length) {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
+    const inserted = await upsertInvoiceDocs(docs);
+    const elapsedMs = Date.now() - startedAt;
     return res.status(200).json({
-      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      message: `Đã xử lý ${docs.length} hoá đơn trong ${(elapsedMs / 1000).toFixed(2)} giây: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
       inserted: inserted.inserted,
       modified: inserted.modified,
+      processedRows: docs.length,
+      elapsedMs,
     });
   } catch (error) {
     console.error("previewExcel error:", error);
@@ -327,6 +455,7 @@ export const previewExcel = async (req: Request, res: Response) => {
 
 export const previewExcelProvince = async (req: Request, res: Response) => {
   try {
+    const startedAt = Date.now();
     if (!req.file) {
       return res.status(400).json({ message: "Khách hàng không tìm thấy file được tải lên." });
     }
@@ -341,25 +470,40 @@ export const previewExcelProvince = async (req: Request, res: Response) => {
     const rows = parseWorksheetRows(worksheet);
     const batchId = Date.now();
     const assignedUserId = String(req.body.assignedUserId || "").trim() || undefined;
-    const docs = rows
-      .map((row, idx) =>
-        buildInvoiceDoc(row, idx + 2, {
-          assignedTo: assignedUserId,
-          billingPeriod: String(req.body.billing_period || ""),
-          batchId
-        })
-      )
-      .filter(Boolean);
+    const { docs, unmatchedAssignees, ambiguousAssignees } = await buildDocsFromRows({
+      rows,
+      fallbackAssignedTo: assignedUserId,
+      billingPeriod: String(req.body.billing_period || ""),
+      batchId,
+    });
+
+    if (ambiguousAssignees.length > 0) {
+      return res.status(400).json({
+        message: formatAssigneeImportError(
+          "Có nhiều người dùng trùng với cột người phụ trách, cần chỉnh lại file Excel",
+          ambiguousAssignees
+        ),
+      });
+    }
+
+    if (unmatchedAssignees.length > 0) {
+      return res.status(400).json({
+        message: formatAssigneeImportError("Không tìm thấy người phụ trách trong file Excel", unmatchedAssignees),
+      });
+    }
 
     if (!docs.length) {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await upsertInvoiceDocs(docs as NonNullable<ReturnType<typeof buildInvoiceDoc>>[]);
+    const inserted = await upsertInvoiceDocs(docs);
+    const elapsedMs = Date.now() - startedAt;
     return res.status(200).json({
-      message: `Đã xử lý hoá đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      message: `Đã xử lý ${docs.length} hoá đơn trong ${(elapsedMs / 1000).toFixed(2)} giây: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
       inserted: inserted.inserted,
       modified: inserted.modified,
+      processedRows: docs.length,
+      elapsedMs,
     });
   } catch (error) {
     console.error("previewExcelProvince error:", error);
