@@ -100,6 +100,8 @@ const normalizeText = (value: unknown): string =>
     .replace(/\s+/g, " ")
     .toLowerCase();
 
+const getDefaultBillingPeriod = () => dayjs().tz("Asia/Ho_Chi_Minh").subtract(1, "month").format("MM/YYYY");
+
 const normalizeAmount = (value: unknown): string => {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return String(Math.trunc(value));
@@ -220,16 +222,7 @@ export const fetchInvoiceByUser = async (req: Request, res: Response) => {
  * GET /api/invoices/user/current-month
  */
 export const fetchInvoiceByUserMonth = async (req: Request, res: Response) => {
-  const now = new Date();
-  let month = now.getMonth();
-  let year = now.getFullYear();
-
-  if (month === 0) {
-    month = 12;
-    year -= 1;
-  }
-
-  const billing_period = `${month.toString().padStart(2, "0")}/${year}`;
+  const billing_period = getDefaultBillingPeriod();
 
   try {
     // 1️⃣ Kiểm tra xác thực người dùng
@@ -2011,9 +2004,8 @@ export const getLatestBillingPeriod = async (req: Request, res: Response) => {
     }).sort({ updatedAt: -1 });
 
     if (!latestInvoice) {
-      // Nếu chưa có dữ liệu nào hợp lệ thì mặc định là tháng hiện tại
-      const now = new Date();
-      const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      // Nếu chưa có dữ liệu nào hợp lệ thì mặc định theo kỳ đi thu chuẩn: tháng trước
+      const defaultPeriod = getDefaultBillingPeriod();
       return res.json({ billing_period: defaultPeriod });
     }
 
