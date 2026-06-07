@@ -605,7 +605,10 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
       addAndCondition(match, { totalAmount: { $nin: [null, "", "0", "0.0", "0.00", 0] } });
     }
 
-    const defaultSort: any = { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
+    const shouldPrioritizeCollectedUpdates = !collectionStatus || collectionStatus === "all";
+    const defaultSort: any = shouldPrioritizeCollectedUpdates
+      ? { collectedRank: -1, collectionSortDate: -1, sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 }
+      : { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
 
     let sortStage: any = {};
 
@@ -697,6 +700,16 @@ export const fetchallInvoice = async (req: Request, res: Response) => {
               },
               else: 0,
             },
+          },
+          collectedRank: {
+            $cond: [{ $eq: ["$collectionStatus", "collected"] }, 1, 0],
+          },
+          collectionSortDate: {
+            $cond: [
+              { $eq: ["$collectionStatus", "collected"] },
+              { $ifNull: ["$collectionDate", new Date(0)] },
+              new Date(0),
+            ],
           },
           sortPriority: { $ifNull: ["$sortPriority", 0] }, // Đảm bảo sortPriority có giá trị mặc định
         },
