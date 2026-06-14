@@ -2,9 +2,13 @@ var SHEET_NAME = "Filter";
 var SHARED_SECRET = "";
 var START_ROW = 17;
 var START_COLUMN = 3;
+var LOCK_WAIT_MS = 30000;
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(LOCK_WAIT_MS);
+
     var body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
     var secret = String(body.secret || "");
 
@@ -20,7 +24,6 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
 
-    var startRow = findFirstEmptyRow_(sheet);
     var rows = items.map(function(item) {
       return [
         String(item.invoiceNumber || ""),
@@ -36,13 +39,19 @@ function doPost(e) {
       ];
     });
 
+    var startRow = findNextAppendRow_(sheet);
+    ensureSheetHasRows_(sheet, startRow + rows.length - 1);
+
     sheet
       .getRange(startRow, START_COLUMN, rows.length, rows[0].length)
       .setValues(rows);
+    SpreadsheetApp.flush();
 
     return jsonResponse_({ ok: true, appended: rows.length, startRow: startRow });
   } catch (error) {
     return jsonResponse_({ ok: false, message: String(error) }, 500);
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -58,15 +67,28 @@ function jsonResponse_(payload, statusCode) {
   return output;
 }
 
-function findFirstEmptyRow_(sheet) {
-  var maxRows = sheet.getMaxRows();
-  var values = sheet.getRange(START_ROW, START_COLUMN, maxRows - START_ROW + 1, 1).getValues();
+function findNextAppendRow_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < START_ROW) {
+    return START_ROW;
+  }
 
-  for (var i = 0; i < values.length; i++) {
-    if (String(values[i][0] || "").trim() === "") {
-      return START_ROW + i;
+  var values = sheet.getRange(START_ROW, START_COLUMN, lastRow - START_ROW + 1, 1).getValues();
+
+  for (var i = values.length - 1; i >= 0; i--) {
+    if (String(values[i][0] || "").trim() !== "") {
+      return START_ROW + i + 1;
     }
   }
 
-  return Math.max(sheet.getLastRow() + 1, START_ROW);
+  return START_ROW;
+}
+
+function ensureSheetHasRows_(sheet, requiredLastRow) {
+  var maxRows = sheet.getMaxRows();
+  if (requiredLastRow <= maxRows) {
+    return;
+  }
+
+  sheet.insertRowsAfter(maxRows, requiredLastRow - maxRows);
 }

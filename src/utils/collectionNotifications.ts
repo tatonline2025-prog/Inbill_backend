@@ -120,42 +120,23 @@ const buildTelegramMessage = (payload: NotificationPayload): string => {
   ]
     .filter(Boolean)
     .join(" ");
-  const itemOperatorName = normalizeText(payload.items[0]?.assignedToName);
-  const operatorLine = itemOperatorName || actorLine || actorName;
-
-  if (payload.items.length === 1) {
-    const item = payload.items[0];
-    return [
-      "Thong bao da thu hoa don",
-      `Nguoi thu / phu trach: ${operatorLine}`,
-      `Ma KH: ${item.invoiceNumber || "-"}`,
-      item.billingPeriod ? `Ky TT: ${item.billingPeriod}` : "",
-      `Ky nay: ${item.currentAmountDisplay}`,
-      `Ky truoc: ${item.previousAmountDisplay}`,
-      `Tong tien: ${item.totalAmountDisplay}`,
-      item.customerName ? `Ten: ${item.customerName}` : "",
-      item.customerAddress ? `Dia chi: ${item.customerAddress}` : "",
-      item.recordBookCode ? `Tram: ${item.recordBookCode}` : "",
-      item.collectionDateDisplay ? `Thoi diem thu: ${item.collectionDateDisplay}` : "",
-      payload.source ? `Nguon: ${payload.source}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  const previewCodes = payload.items
-    .slice(0, 10)
-    .map((item) => item.invoiceNumber || item.invoiceId)
-    .filter(Boolean)
-    .join(", ");
-  const remaining = payload.items.length - Math.min(payload.items.length, 10);
-  const suffix = remaining > 0 ? `, va ${remaining} hoa don khac` : "";
+  const operatorNames = Array.from(
+    new Set(payload.items.map((item) => normalizeText(item.assignedToName)).filter(Boolean))
+  );
+  const operatorLine = operatorNames.join(", ") || actorLine || actorName;
+  const invoiceNumbers = Array.from(
+    new Set(payload.items.map((item) => normalizeText(item.invoiceNumber || item.invoiceId)).filter(Boolean))
+  );
+  const invoiceLine = invoiceNumbers.join(", ") || "-";
+  const collectedAt =
+    normalizeText(payload.items[0]?.collectionDateDisplay) ||
+    dayjs(payload.generatedAt).tz(TZ).format("HH:mm DD/MM/YYYY");
 
   return [
-    `Thong bao da thu hang loat: ${payload.items.length} hoa don`,
-    `Nguoi thu / phu trach: ${actorLine || actorName}`,
-    `Danh sach: ${previewCodes}${suffix}`,
-    payload.source ? `Nguon: ${payload.source}` : "",
+    "Thong bao da thu hoa don",
+    `Ma KH: ${invoiceLine}`,
+    `Nguoi phu trach: ${operatorLine}`,
+    collectedAt ? `Thoi diem thu: ${collectedAt}` : "",
   ]
     .filter(Boolean)
     .join("\n");
