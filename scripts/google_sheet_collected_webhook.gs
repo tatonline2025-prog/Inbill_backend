@@ -1,7 +1,7 @@
-var SHEET_NAME = "CollectedInvoices";
+var SHEET_NAME = "Filter";
 var SHARED_SECRET = "";
 var START_ROW = 17;
-var START_COLUMN = 1;
+var START_COLUMN = 3;
 
 function doPost(e) {
   try {
@@ -20,17 +20,9 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
 
-    var actor = body.actor || {};
-    var actorName = String(actor.fullName || actor.username || actor.userId || "");
-    var actorRole = String(actor.role || "");
-    var actorDisplay = actorRole ? actorName + " (" + actorRole + ")" : actorName;
-
-    var startRow = Math.max(sheet.getLastRow() + 1, START_ROW);
-    var rows = items.map(function(item, index) {
-      var rowNumber = startRow - START_ROW + index + 1;
-
+    var startRow = findFirstEmptyRow_(sheet);
+    var rows = items.map(function(item) {
       return [
-        rowNumber,
         String(item.invoiceNumber || ""),
         Number(item.currentAmountValue || 0),
         Number(item.previousAmountValue || 0),
@@ -39,10 +31,8 @@ function doPost(e) {
         String(item.customerAddress || ""),
         String(item.recordBookCode || ""),
         String(item.assignedToName || ""),
-        actorDisplay,
         String(item.collectionDateDisplay || ""),
-        String(item.billingPeriod || ""),
-        "Da thu"
+        String(item.billingPeriod || "")
       ];
     });
 
@@ -66,4 +56,17 @@ function jsonResponse_(payload, statusCode) {
   }
 
   return output;
+}
+
+function findFirstEmptyRow_(sheet) {
+  var maxRows = sheet.getMaxRows();
+  var values = sheet.getRange(START_ROW, START_COLUMN, maxRows - START_ROW + 1, 1).getValues();
+
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0] || "").trim() === "") {
+      return START_ROW + i;
+    }
+  }
+
+  return Math.max(sheet.getLastRow() + 1, START_ROW);
 }

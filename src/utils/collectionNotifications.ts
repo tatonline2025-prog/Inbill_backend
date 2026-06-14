@@ -120,13 +120,14 @@ const buildTelegramMessage = (payload: NotificationPayload): string => {
   ]
     .filter(Boolean)
     .join(" ");
+  const itemOperatorName = normalizeText(payload.items[0]?.assignedToName);
+  const operatorLine = itemOperatorName || actorLine || actorName;
 
   if (payload.items.length === 1) {
     const item = payload.items[0];
     return [
       "Thong bao da thu hoa don",
-      `Nguoi bam Da thu: ${actorLine || actorName}`,
-      item.assignedToName ? `Nguoi phu trach: ${item.assignedToName}` : "",
+      `Nguoi thu / phu trach: ${operatorLine}`,
       `Ma KH: ${item.invoiceNumber || "-"}`,
       item.billingPeriod ? `Ky TT: ${item.billingPeriod}` : "",
       `Ky nay: ${item.currentAmountDisplay}`,
@@ -152,7 +153,7 @@ const buildTelegramMessage = (payload: NotificationPayload): string => {
 
   return [
     `Thong bao da thu hang loat: ${payload.items.length} hoa don`,
-    `Nguoi bam Da thu: ${actorLine || actorName}`,
+    `Nguoi thu / phu trach: ${actorLine || actorName}`,
     `Danh sach: ${previewCodes}${suffix}`,
     payload.source ? `Nguon: ${payload.source}` : "",
   ]
