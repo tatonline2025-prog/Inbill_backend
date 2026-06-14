@@ -1,5 +1,7 @@
 var SHEET_NAME = "CollectedInvoices";
 var SHARED_SECRET = "";
+var START_ROW = 17;
+var START_COLUMN = 1;
 
 function doPost(e) {
   try {
@@ -17,63 +19,41 @@ function doPost(e) {
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-    ensureHeader_(sheet);
 
     var actor = body.actor || {};
-    var rows = items.map(function(item) {
+    var actorName = String(actor.fullName || actor.username || actor.userId || "");
+    var actorRole = String(actor.role || "");
+    var actorDisplay = actorRole ? actorName + " (" + actorRole + ")" : actorName;
+
+    var startRow = Math.max(sheet.getLastRow() + 1, START_ROW);
+    var rows = items.map(function(item, index) {
+      var rowNumber = startRow - START_ROW + index + 1;
+
       return [
-        new Date(),
-        String(body.event || ""),
-        String(body.source || ""),
-        String(actor.fullName || actor.username || actor.userId || ""),
-        String(actor.role || ""),
-        String(item.invoiceId || ""),
+        rowNumber,
         String(item.invoiceNumber || ""),
-        String(item.customerName || ""),
-        String(item.billingPeriod || ""),
-        String(item.recordBookCode || ""),
+        Number(item.currentAmountValue || 0),
+        Number(item.previousAmountValue || 0),
         Number(item.totalAmountValue || 0),
-        String(item.totalAmountRaw || ""),
-        String(item.totalAmountDisplay || ""),
-        String(item.collectionDateIso || ""),
+        String(item.customerName || ""),
+        String(item.customerAddress || ""),
+        String(item.recordBookCode || ""),
+        String(item.assignedToName || ""),
+        actorDisplay,
         String(item.collectionDateDisplay || ""),
-        String(item.assignedToId || ""),
-        String(item.assignedToName || "")
+        String(item.billingPeriod || ""),
+        "Da thu"
       ];
     });
 
     sheet
-      .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
+      .getRange(startRow, START_COLUMN, rows.length, rows[0].length)
       .setValues(rows);
 
-    return jsonResponse_({ ok: true, appended: rows.length });
+    return jsonResponse_({ ok: true, appended: rows.length, startRow: startRow });
   } catch (error) {
     return jsonResponse_({ ok: false, message: String(error) }, 500);
   }
-}
-
-function ensureHeader_(sheet) {
-  if (sheet.getLastRow() > 0) return;
-
-  sheet.appendRow([
-    "receivedAt",
-    "event",
-    "source",
-    "actorName",
-    "actorRole",
-    "invoiceId",
-    "invoiceNumber",
-    "customerName",
-    "billingPeriod",
-    "recordBookCode",
-    "totalAmountValue",
-    "totalAmountRaw",
-    "totalAmountDisplay",
-    "collectionDateIso",
-    "collectionDateDisplay",
-    "assignedToId",
-    "assignedToName"
-  ]);
 }
 
 function jsonResponse_(payload, statusCode) {

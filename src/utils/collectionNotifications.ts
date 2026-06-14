@@ -24,8 +24,15 @@ type NotificationItem = {
   invoiceId: string;
   invoiceNumber: string;
   customerName: string;
+  customerAddress: string;
   billingPeriod: string;
   recordBookCode: string;
+  currentAmountRaw: string;
+  currentAmountValue: number;
+  currentAmountDisplay: string;
+  previousAmountRaw: string;
+  previousAmountValue: number;
+  previousAmountDisplay: string;
   totalAmountRaw: string;
   totalAmountValue: number;
   totalAmountDisplay: string;
@@ -104,19 +111,31 @@ const buildWebhookBody = (payload: NotificationPayload) => ({
 
 const buildTelegramMessage = (payload: NotificationPayload): string => {
   const actorName = getActorDisplayName(payload.actor);
+  const actorUsername = normalizeText(payload.actor.username);
+  const actorRole = normalizeText(payload.actor.role);
+  const actorLine = [
+    actorName,
+    actorUsername ? `@${actorUsername}` : "",
+    actorRole ? `(${actorRole})` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (payload.items.length === 1) {
     const item = payload.items[0];
     return [
       "Thong bao da thu hoa don",
-      `Nguoi thao tac: ${actorName}${payload.actor.role ? ` (${payload.actor.role})` : ""}`,
+      `Nguoi bam Da thu: ${actorLine || actorName}`,
       item.assignedToName ? `Nguoi phu trach: ${item.assignedToName}` : "",
       `Ma KH: ${item.invoiceNumber || "-"}`,
-      item.recordBookCode ? `Ma tram: ${item.recordBookCode}` : "",
-      item.customerName ? `Khach hang: ${item.customerName}` : "",
       item.billingPeriod ? `Ky TT: ${item.billingPeriod}` : "",
+      `Ky nay: ${item.currentAmountDisplay}`,
+      `Ky truoc: ${item.previousAmountDisplay}`,
       `Tong tien: ${item.totalAmountDisplay}`,
-      item.collectionDateDisplay ? `Ngay thu: ${item.collectionDateDisplay}` : "",
+      item.customerName ? `Ten: ${item.customerName}` : "",
+      item.customerAddress ? `Dia chi: ${item.customerAddress}` : "",
+      item.recordBookCode ? `Tram: ${item.recordBookCode}` : "",
+      item.collectionDateDisplay ? `Thoi diem thu: ${item.collectionDateDisplay}` : "",
       payload.source ? `Nguon: ${payload.source}` : "",
     ]
       .filter(Boolean)
@@ -133,7 +152,7 @@ const buildTelegramMessage = (payload: NotificationPayload): string => {
 
   return [
     `Thong bao da thu hang loat: ${payload.items.length} hoa don`,
-    `Nguoi thao tac: ${actorName}${payload.actor.role ? ` (${payload.actor.role})` : ""}`,
+    `Nguoi bam Da thu: ${actorLine || actorName}`,
     `Danh sach: ${previewCodes}${suffix}`,
     payload.source ? `Nguon: ${payload.source}` : "",
   ]
@@ -242,8 +261,15 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
       invoiceId,
       invoiceNumber: normalizeText(invoice.invoiceNumber),
       customerName: normalizeText(invoice.customerName),
+      customerAddress: normalizeText(invoice.customerAddress),
       billingPeriod: normalizeText(invoice.billing_period),
       recordBookCode: normalizeText(invoice.recordBookCode),
+      currentAmountRaw: normalizeText(invoice.currentAmount),
+      currentAmountValue: parseAmountValue(invoice.currentAmount),
+      currentAmountDisplay: formatAmountValue(parseAmountValue(invoice.currentAmount)),
+      previousAmountRaw: normalizeText(invoice.previousAmount),
+      previousAmountValue: parseAmountValue(invoice.previousAmount),
+      previousAmountDisplay: formatAmountValue(parseAmountValue(invoice.previousAmount)),
       totalAmountRaw: normalizeText(invoice.totalAmount),
       totalAmountValue: amountValue,
       totalAmountDisplay: formatAmountValue(amountValue),
