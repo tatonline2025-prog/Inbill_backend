@@ -263,11 +263,11 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
   });
 };
 
-export const queueCollectedInvoiceNotifications = (
+export const sendCollectedInvoiceNotifications = async (
   invoices: NotificationInvoice[],
   actor?: JwtPayload | null,
   source = "unknown"
-): void => {
+) : Promise<void> => {
   if (!Array.isArray(invoices) || invoices.length === 0) return;
 
   const hasTelegramConfig =
@@ -277,34 +277,65 @@ export const queueCollectedInvoiceNotifications = (
 
   if (!hasTelegramConfig && !hasWebhookConfig) return;
 
-  void (async () => {
-    try {
-      const items = await buildNotificationItems(invoices);
-      if (items.length === 0) return;
-
-      const payload: NotificationPayload = {
-        event: "invoice_collected",
+  try {
+    console.info(
+      "[collection-notify] start",
+      JSON.stringify({
         source,
-        generatedAt: new Date().toISOString(),
-        count: items.length,
-        actor: getActorInfo(actor),
-        items,
-      };
+        count: invoices.length,
+        hasTelegramConfig,
+        hasWebhookConfig,
+        invoiceNumbers: invoices
+          .slice(0, 10)
+          .map((invoice) => normalizeText(invoice.invoiceNumber || invoice._id))
+          .filter(Boolean),
+      })
+    );
 
-      const results = await Promise.allSettled([
-        sendTelegramNotification(payload),
-        sendWebhookNotification(payload),
-      ]);
-
-      results.forEach((result) => {
-        if (result.status === "rejected") {
-          console.error("queueCollectedInvoiceNotifications error:", result.reason);
-        }
-      });
-    } catch (error) {
-      console.error("queueCollectedInvoiceNotifications fatal error:", error);
+    const items = await buildNotificationItems(invoices);
+    if (items.length === 0) {
+      console.info("[collection-notify] skip_no_items", source);
+      return;
     }
-  })();
+
+    const payload: NotificationPayload = {
+      event: "invoice_collected",
+      source,
+      generatedAt: new Date().toISOString(),
+      count: items.length,
+      actor: getActorInfo(actor),
+      items,
+    };
+
+    const channels: Array<{ name: "telegram" | "webhook"; task: Promise<void> }> = [];
+    if (hasTelegramConfig) {
+      channels.push({ name: "telegram", task: sendTelegramNotification(payload) });
+    }
+    if (hasWebhookConfig) {
+      channels.push({ name: "webhook", task: sendWebhookNotification(payload) });
+    }
+
+    const results = await Promise.allSettled(channels.map((channel) => channel.task));
+    results.forEach((result, index) => {
+      const channelName = channels[index]?.name || `channel_${index}`;
+      if (result.status === "fulfilled") {
+        console.info("[collection-notify] success", channelName, source, payload.count);
+        return;
+      }
+
+      console.error("[collection-notify] error", channelName, source, result.reason);
+    });
+  } catch (error) {
+    console.error("[collection-notify] fatal", source, error);
+  }
+};
+
+export const queueCollectedInvoiceNotifications = (
+  invoices: NotificationInvoice[],
+  actor?: JwtPayload | null,
+  source = "unknown"
+): void => {
+  void sendCollectedInvoiceNotifications(invoices, actor, source);
 };
 
 export const didBecomeCollected = (
