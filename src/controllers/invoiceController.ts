@@ -3,6 +3,10 @@ import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertCustomerMasterFromInvoice } from "./customerMasterController";
 import mongoose from "mongoose";
+import {
+  didBecomeCollected,
+  queueCollectedInvoiceNotifications,
+} from "../utils/collectionNotifications";
 import { parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
 import { normalizeRecordBookCode } from "../utils/recordBookCode";
 
@@ -53,6 +57,7 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
 
     const invoice = await Invoice.findById(invoiceId);
     if (!invoice) return res.status(404).json({ message: "Hóa đơn không tồn tại" });
+    const beforeCollectionStatus = invoice.collectionStatus;
 
     if (!invoice.currentAmount || invoice.currentAmount.trim() === "") {
       invoice.currentAmount = "0";
@@ -78,7 +83,13 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
       }
     }
 
+    const shouldNotifyCollected = didBecomeCollected(beforeCollectionStatus, invoice.collectionStatus);
+
     await invoice.save();
+
+    if (field === "collectionStatus" && shouldNotifyCollected) {
+      queueCollectedInvoiceNotifications([invoice.toObject()], req.user, "toggle_invoice_status");
+    }
 
     res.status(200).json(invoice);
   } catch (err) {
@@ -102,6 +113,7 @@ export const updateCollectionDateByAdmin = async (req: Request, res: Response) =
 
     const invoice = await Invoice.findById(invoiceId);
     if (!invoice) return res.status(404).json({ message: "Hóa đơn không tồn tại" });
+    const beforeCollectionStatus = invoice.collectionStatus;
 
     if (!date) {
       invoice.collectionStatus = "not_collected";
@@ -117,7 +129,12 @@ export const updateCollectionDateByAdmin = async (req: Request, res: Response) =
       invoice.collectionDateAdminEdited = true;
     }
 
+    const shouldNotifyCollected = didBecomeCollected(beforeCollectionStatus, invoice.collectionStatus);
+
     await invoice.save();
+    if (shouldNotifyCollected) {
+      queueCollectedInvoiceNotifications([invoice.toObject()], req.user, "admin_update_collection_date");
+    }
     return res.status(200).json(invoice);
   } catch (err) {
     console.error("updateCollectionDateByAdmin error:", err);
@@ -213,7 +230,19 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     const update: Record<string, unknown> = { $set };
     if (Object.keys($unset).length > 0) update.$unset = $unset;
 
+    const beforeInvoices = await Invoice.find({ _id: { $in: ids } }).lean();
     const result = await Invoice.updateMany({ _id: { $in: ids } }, update);
+    const afterInvoices = await Invoice.find({ _id: { $in: ids } }).lean();
+
+    const beforeMap = new Map(beforeInvoices.map((invoice) => [String(invoice._id), invoice]));
+    const collectedInvoices = afterInvoices.filter((invoice) => {
+      const beforeInvoice = beforeMap.get(String(invoice._id));
+      return didBecomeCollected(beforeInvoice?.collectionStatus, invoice.collectionStatus);
+    });
+
+    if (collectedInvoices.length > 0) {
+      queueCollectedInvoiceNotifications(collectedInvoices, req.user, "bulk_update_invoices");
+    }
 
     return res.status(200).json({
       message: "Cập nhật hàng loạt thành công.",
