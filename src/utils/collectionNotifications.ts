@@ -3,6 +3,7 @@ import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import mongoose from "mongoose";
 
+import CollectionDeliveryLog from "../models/collectionDeliveryLogModel";
 import { IInvoice } from "../models/invoiceModel";
 import User from "../models/userModel";
 import { JwtPayload } from "../types/jwtPayload";
@@ -12,8 +13,16 @@ dayjs.extend(timezone);
 
 const TZ = "Asia/Ho_Chi_Minh";
 const FETCH_TIMEOUT_MS = 10_000;
-const NOTIFICATION_DEDUP_WINDOW_MS = 5 * 60 * 1000;
-const recentCollectedNotificationKeys = new Map<string, number>();
+const DELIVERY_LOCK_WINDOW_MS = 60_000;
+
+type NotificationChannel = "telegram" | "webhook";
+
+type NotificationActor = {
+  userId: string;
+  fullName: string;
+  username: string;
+  role: string;
+};
 
 type NotificationInvoice = Partial<IInvoice> & {
   _id?: unknown;
@@ -23,6 +32,7 @@ type NotificationInvoice = Partial<IInvoice> & {
 };
 
 type NotificationItem = {
+  eventKey: string;
   invoiceId: string;
   invoiceNumber: string;
   customerName: string;
@@ -49,60 +59,28 @@ type NotificationPayload = {
   source: string;
   generatedAt: string;
   count: number;
-  actor: {
-    userId: string;
-    fullName: string;
-    username: string;
-    role: string;
-  };
+  actor: NotificationActor;
   items: NotificationItem[];
+};
+
+export type SendCollectedNotificationOptions = {
+  channels?: NotificationChannel[];
+  force?: boolean;
 };
 
 const normalizeId = (value: unknown): string => {
   if (!value) return "";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return value.trim();
   if (value instanceof mongoose.Types.ObjectId) return value.toString();
   if (typeof value === "object" && value !== null) {
     const nestedId = (value as { _id?: unknown })._id;
-    if (typeof nestedId === "string") return nestedId;
+    if (typeof nestedId === "string") return nestedId.trim();
     if (nestedId instanceof mongoose.Types.ObjectId) return nestedId.toString();
   }
   return "";
 };
 
 const normalizeText = (value: unknown): string => String(value || "").trim();
-
-const buildRecentNotificationKey = (invoice: NotificationInvoice): string => {
-  const invoiceId = normalizeId(invoice._id);
-  const invoiceNumber = normalizeText(invoice.invoiceNumber);
-  const collectionMinute = dayjs(invoice.collectionDate || new Date())
-    .tz(TZ)
-    .format("YYYY-MM-DDTHH:mm");
-
-  return `${invoiceId || invoiceNumber}:${collectionMinute}`;
-};
-
-const filterRecentlyNotifiedInvoices = (invoices: NotificationInvoice[]): NotificationInvoice[] => {
-  const now = Date.now();
-
-  for (const [key, timestamp] of recentCollectedNotificationKeys.entries()) {
-    if (now - timestamp > NOTIFICATION_DEDUP_WINDOW_MS) {
-      recentCollectedNotificationKeys.delete(key);
-    }
-  }
-
-  return invoices.filter((invoice) => {
-    const key = buildRecentNotificationKey(invoice);
-    const previousTimestamp = recentCollectedNotificationKeys.get(key);
-
-    if (previousTimestamp && now - previousTimestamp <= NOTIFICATION_DEDUP_WINDOW_MS) {
-      return false;
-    }
-
-    recentCollectedNotificationKeys.set(key, now);
-    return true;
-  });
-};
 
 const parseAmountValue = (value: unknown): number => {
   const digits = String(value || "").replace(/[^\d-]/g, "");
@@ -128,49 +106,58 @@ const formatCollectionDate = (value: unknown): { iso: string; display: string } 
   };
 };
 
-const getActorInfo = (actor?: JwtPayload | null) => ({
+const toObjectIdOrNull = (value: string): mongoose.Types.ObjectId | null =>
+  mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : null;
+
+const truncateErrorMessage = (value: unknown, limit = 500): string => {
+  const normalized =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+      ? value
+      : JSON.stringify(value || "Unknown error");
+
+  return normalized.slice(0, limit);
+};
+
+const getActorInfo = (actor?: JwtPayload | null): NotificationActor => ({
   userId: String(actor?._id || "").trim(),
   fullName: String(actor?.fullName || "").trim(),
   username: String(actor?.username || "").trim(),
   role: String(actor?.role || "").trim(),
 });
 
-const getActorDisplayName = (actor: NotificationPayload["actor"]): string =>
+const getActorDisplayName = (actor: NotificationActor): string =>
   actor.fullName || actor.username || actor.userId || "Khong ro";
+
+export const buildCollectedNotificationEventKey = (invoice: {
+  _id?: unknown;
+  invoiceNumber?: string | null;
+  collectionDate?: Date | string | null;
+}): string => {
+  const invoiceId = normalizeId(invoice._id);
+  const invoiceNumber = normalizeText(invoice.invoiceNumber);
+  const collectionMinute = dayjs(invoice.collectionDate || new Date())
+    .tz(TZ)
+    .format("YYYY-MM-DDTHH:mm");
+
+  return `${invoiceId || invoiceNumber}:${collectionMinute}`;
+};
 
 const buildWebhookBody = (payload: NotificationPayload) => ({
   ...payload,
   secret: String(process.env.INVOICE_COLLECT_WEBHOOK_SECRET || "").trim(),
 });
 
-const buildTelegramMessage = (payload: NotificationPayload): string => {
-  const actorName = getActorDisplayName(payload.actor);
-  const actorUsername = normalizeText(payload.actor.username);
-  const actorRole = normalizeText(payload.actor.role);
-  const actorLine = [
-    actorName,
-    actorUsername ? `@${actorUsername}` : "",
-    actorRole ? `(${actorRole})` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const operatorNames = Array.from(
-    new Set(payload.items.map((item) => normalizeText(item.assignedToName)).filter(Boolean))
-  );
-  const operatorLine = operatorNames.join(", ") || actorLine || actorName;
-  const invoiceNumbers = Array.from(
-    new Set(payload.items.map((item) => normalizeText(item.invoiceNumber || item.invoiceId)).filter(Boolean))
-  );
-  const invoiceLine = invoiceNumbers.join(", ") || "-";
-  const collectedAt =
-    normalizeText(payload.items[0]?.collectionDateDisplay) ||
-    dayjs(payload.generatedAt).tz(TZ).format("HH:mm DD/MM/YYYY");
+const buildTelegramMessage = (item: NotificationItem, actor: NotificationActor): string => {
+  const assignedName = normalizeText(item.assignedToName) || getActorDisplayName(actor);
+  const invoiceCode = normalizeText(item.invoiceNumber || item.invoiceId) || "-";
 
   return [
     "Thong bao da thu hoa don",
-    `Ma KH: ${invoiceLine}`,
-    `Nguoi phu trach: ${operatorLine}`,
-    collectedAt ? `Thoi diem thu: ${collectedAt}` : "",
+    `Ma KH: ${invoiceCode}`,
+    `Nguoi phu trach: ${assignedName || "Khong ro"}`,
+    item.collectionDateDisplay ? `Thoi diem thu: ${item.collectionDateDisplay}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -190,7 +177,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit): Promise<Respons
   }
 };
 
-const sendTelegramNotification = async (payload: NotificationPayload): Promise<void> => {
+const sendTelegramNotification = async (item: NotificationItem, actor: NotificationActor): Promise<void> => {
   const botToken = String(process.env.INVOICE_COLLECT_TELEGRAM_BOT_TOKEN || "").trim();
   const chatId = String(process.env.INVOICE_COLLECT_TELEGRAM_CHAT_ID || "").trim();
   const threadIdRaw = String(process.env.INVOICE_COLLECT_TELEGRAM_THREAD_ID || "").trim();
@@ -199,7 +186,7 @@ const sendTelegramNotification = async (payload: NotificationPayload): Promise<v
 
   const body: Record<string, unknown> = {
     chat_id: chatId,
-    text: buildTelegramMessage(payload),
+    text: buildTelegramMessage(item, actor),
     disable_web_page_preview: true,
   };
 
@@ -259,7 +246,12 @@ const resolveAssignedUserMap = async (invoices: NotificationInvoice[]): Promise<
   return new Map(
     users.map((user) => [
       String(user._id),
-      String((user as { fullName?: string; username?: string; phone?: string }).fullName || (user as { username?: string }).username || (user as { phone?: string }).phone || "").trim(),
+      String(
+        (user as { fullName?: string; username?: string; phone?: string }).fullName ||
+          (user as { username?: string }).username ||
+          (user as { phone?: string }).phone ||
+          ""
+      ).trim(),
     ])
   );
 };
@@ -270,10 +262,13 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
   return invoices.map((invoice) => {
     const invoiceId = normalizeId(invoice._id);
     const assignedToId = normalizeId(invoice.assignedTo);
-    const amountValue = parseAmountValue(invoice.totalAmount);
+    const currentAmountValue = parseAmountValue(invoice.currentAmount);
+    const previousAmountValue = parseAmountValue(invoice.previousAmount);
+    const totalAmountValue = parseAmountValue(invoice.totalAmount);
     const dateInfo = formatCollectionDate(invoice.collectionDate);
 
     return {
+      eventKey: buildCollectedNotificationEventKey(invoice),
       invoiceId,
       invoiceNumber: normalizeText(invoice.invoiceNumber),
       customerName: normalizeText(invoice.customerName),
@@ -281,14 +276,14 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
       billingPeriod: normalizeText(invoice.billing_period),
       recordBookCode: normalizeText(invoice.recordBookCode),
       currentAmountRaw: normalizeText(invoice.currentAmount),
-      currentAmountValue: parseAmountValue(invoice.currentAmount),
-      currentAmountDisplay: formatAmountValue(parseAmountValue(invoice.currentAmount)),
+      currentAmountValue,
+      currentAmountDisplay: formatAmountValue(currentAmountValue),
       previousAmountRaw: normalizeText(invoice.previousAmount),
-      previousAmountValue: parseAmountValue(invoice.previousAmount),
-      previousAmountDisplay: formatAmountValue(parseAmountValue(invoice.previousAmount)),
+      previousAmountValue,
+      previousAmountDisplay: formatAmountValue(previousAmountValue),
       totalAmountRaw: normalizeText(invoice.totalAmount),
-      totalAmountValue: amountValue,
-      totalAmountDisplay: formatAmountValue(amountValue),
+      totalAmountValue,
+      totalAmountDisplay: formatAmountValue(totalAmountValue),
       collectionDateIso: dateInfo.iso,
       collectionDateDisplay: dateInfo.display,
       assignedToId,
@@ -297,74 +292,294 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
   });
 };
 
+const uniqueItemsByEventKey = (items: NotificationItem[]): NotificationItem[] => {
+  const map = new Map<string, NotificationItem>();
+  items.forEach((item) => {
+    if (!map.has(item.eventKey)) {
+      map.set(item.eventKey, item);
+    }
+  });
+
+  return Array.from(map.values());
+};
+
+const buildLogMetadata = (
+  item: NotificationItem,
+  actor: NotificationActor,
+  source: string
+): Record<string, unknown> => ({
+  invoiceId: toObjectIdOrNull(item.invoiceId),
+  invoiceNumber: item.invoiceNumber,
+  billingPeriod: item.billingPeriod,
+  assignedTo: toObjectIdOrNull(item.assignedToId),
+  assignedToName: item.assignedToName,
+  collectionDate: item.collectionDateIso ? new Date(item.collectionDateIso) : null,
+  collectionDateDisplay: item.collectionDateDisplay,
+  totalAmountValue: item.totalAmountValue,
+  source,
+  actor,
+});
+
+const ensureDeliveryLogs = async (
+  items: NotificationItem[],
+  actor: NotificationActor,
+  source: string
+): Promise<void> => {
+  if (items.length === 0) return;
+
+  try {
+    await CollectionDeliveryLog.bulkWrite(
+      items.map((item) => ({
+        updateOne: {
+          filter: { eventKey: item.eventKey },
+          update: {
+            $setOnInsert: {
+              eventKey: item.eventKey,
+              telegramStatus: "pending",
+              webhookStatus: "pending",
+            },
+            $set: buildLogMetadata(item, actor, source),
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false }
+    );
+  } catch (error) {
+    const maybeCode = (error as { code?: number }).code;
+    if (maybeCode !== 11000) {
+      throw error;
+    }
+  }
+};
+
+const claimDeliveryChannel = async (
+  item: NotificationItem,
+  actor: NotificationActor,
+  source: string,
+  channel: NotificationChannel,
+  force: boolean
+): Promise<boolean> => {
+  const statusField = channel === "telegram" ? "telegramStatus" : "webhookStatus";
+  const lockField = channel === "telegram" ? "telegramLockExpiresAt" : "webhookLockExpiresAt";
+  const errorField = channel === "telegram" ? "telegramError" : "webhookError";
+  const now = new Date();
+  const lockExpiresAt = new Date(now.getTime() + DELIVERY_LOCK_WINDOW_MS);
+
+  const filter: Record<string, unknown> = {
+    eventKey: item.eventKey,
+    $or: [
+      { [lockField]: null },
+      { [lockField]: { $exists: false } },
+      { [lockField]: { $lt: now } },
+    ],
+  };
+
+  if (!force) {
+    filter[statusField] = { $ne: "sent" };
+  }
+
+  const update: Record<string, unknown> = {
+    $set: {
+      ...buildLogMetadata(item, actor, source),
+      [statusField]: "sending",
+      [lockField]: lockExpiresAt,
+      [errorField]: "",
+      lastAttemptAt: now,
+    },
+  };
+
+  const claimed = await CollectionDeliveryLog.findOneAndUpdate(filter, update, {
+    new: true,
+  })
+    .select("_id")
+    .lean();
+
+  return !!claimed;
+};
+
+const markChannelSuccess = async (
+  channel: NotificationChannel,
+  items: NotificationItem[],
+  actor: NotificationActor,
+  source: string
+): Promise<void> => {
+  if (items.length === 0) return;
+
+  const statusField = channel === "telegram" ? "telegramStatus" : "webhookStatus";
+  const sentAtField = channel === "telegram" ? "telegramSentAt" : "webhookSentAt";
+  const errorField = channel === "telegram" ? "telegramError" : "webhookError";
+  const lockField = channel === "telegram" ? "telegramLockExpiresAt" : "webhookLockExpiresAt";
+  const sentAt = new Date();
+
+  await Promise.all(
+    items.map((item) =>
+      CollectionDeliveryLog.updateOne(
+        { eventKey: item.eventKey },
+        {
+          $set: {
+            ...buildLogMetadata(item, actor, source),
+            [statusField]: "sent",
+            [sentAtField]: sentAt,
+            [errorField]: "",
+            [lockField]: null,
+          },
+        }
+      )
+    )
+  );
+};
+
+const markChannelFailed = async (
+  channel: NotificationChannel,
+  items: NotificationItem[],
+  actor: NotificationActor,
+  source: string,
+  error: unknown
+): Promise<void> => {
+  if (items.length === 0) return;
+
+  const statusField = channel === "telegram" ? "telegramStatus" : "webhookStatus";
+  const errorField = channel === "telegram" ? "telegramError" : "webhookError";
+  const lockField = channel === "telegram" ? "telegramLockExpiresAt" : "webhookLockExpiresAt";
+  const errorMessage = truncateErrorMessage(error);
+
+  await Promise.all(
+    items.map((item) =>
+      CollectionDeliveryLog.updateOne(
+        { eventKey: item.eventKey },
+        {
+          $set: {
+            ...buildLogMetadata(item, actor, source),
+            [statusField]: "failed",
+            [errorField]: errorMessage,
+            [lockField]: null,
+          },
+        }
+      )
+    )
+  );
+};
+
+const deliverTelegramNotifications = async (
+  items: NotificationItem[],
+  actor: NotificationActor,
+  source: string,
+  force: boolean
+): Promise<void> => {
+  const claimedItems = (
+    await Promise.all(
+      items.map(async (item) => ((await claimDeliveryChannel(item, actor, source, "telegram", force)) ? item : null))
+    )
+  ).filter((item): item is NotificationItem => !!item);
+
+  if (claimedItems.length === 0) return;
+
+  const results = await Promise.allSettled(
+    claimedItems.map(async (item) => {
+      try {
+        await sendTelegramNotification(item, actor);
+        await markChannelSuccess("telegram", [item], actor, source);
+      } catch (error) {
+        await markChannelFailed("telegram", [item], actor, source, error);
+        throw error;
+      }
+    })
+  );
+
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      const invoiceCode = claimedItems[index]?.invoiceNumber || claimedItems[index]?.invoiceId || "unknown";
+      console.error("[collection-notify] telegram_error", source, invoiceCode, result.reason);
+    }
+  });
+};
+
+const deliverWebhookNotifications = async (
+  items: NotificationItem[],
+  actor: NotificationActor,
+  source: string,
+  force: boolean
+): Promise<void> => {
+  const claimedItems = (
+    await Promise.all(
+      items.map(async (item) => ((await claimDeliveryChannel(item, actor, source, "webhook", force)) ? item : null))
+    )
+  ).filter((item): item is NotificationItem => !!item);
+
+  if (claimedItems.length === 0) return;
+
+  const payload: NotificationPayload = {
+    event: "invoice_collected",
+    source,
+    generatedAt: new Date().toISOString(),
+    count: claimedItems.length,
+    actor,
+    items: claimedItems,
+  };
+
+  try {
+    await sendWebhookNotification(payload);
+    await markChannelSuccess("webhook", claimedItems, actor, source);
+  } catch (error) {
+    await markChannelFailed("webhook", claimedItems, actor, source, error);
+    console.error("[collection-notify] webhook_error", source, error);
+  }
+};
+
+const normalizeChannels = (channels?: NotificationChannel[]): NotificationChannel[] => {
+  const requested = Array.isArray(channels) && channels.length > 0 ? channels : ["telegram", "webhook"];
+  return Array.from(new Set(requested.filter((value): value is NotificationChannel => value === "telegram" || value === "webhook")));
+};
+
 export const sendCollectedInvoiceNotifications = async (
   invoices: NotificationInvoice[],
   actor?: JwtPayload | null,
-  source = "unknown"
-) : Promise<void> => {
+  source = "unknown",
+  options: SendCollectedNotificationOptions = {}
+): Promise<void> => {
   if (!Array.isArray(invoices) || invoices.length === 0) return;
 
-  const filteredInvoices = filterRecentlyNotifiedInvoices(invoices);
-  if (filteredInvoices.length === 0) {
-    console.info("[collection-notify] skip_duplicate", source, invoices.length);
-    return;
-  }
-
+  const requestedChannels = normalizeChannels(options.channels);
   const hasTelegramConfig =
     !!String(process.env.INVOICE_COLLECT_TELEGRAM_BOT_TOKEN || "").trim() &&
     !!String(process.env.INVOICE_COLLECT_TELEGRAM_CHAT_ID || "").trim();
   const hasWebhookConfig = !!String(process.env.INVOICE_COLLECT_WEBHOOK_URL || "").trim();
 
-  if (!hasTelegramConfig && !hasWebhookConfig) return;
+  const activeChannels = requestedChannels.filter((channel) =>
+    channel === "telegram" ? hasTelegramConfig : hasWebhookConfig
+  );
+  if (activeChannels.length === 0) return;
+
+  const actorInfo = getActorInfo(actor);
 
   try {
-    console.info(
-      "[collection-notify] start",
-      JSON.stringify({
-        source,
-        count: filteredInvoices.length,
-        hasTelegramConfig,
-        hasWebhookConfig,
-        invoiceNumbers: filteredInvoices
-          .slice(0, 10)
-          .map((invoice) => normalizeText(invoice.invoiceNumber || invoice._id))
-          .filter(Boolean),
-      })
-    );
-
-    const items = await buildNotificationItems(filteredInvoices);
+    const items = uniqueItemsByEventKey(await buildNotificationItems(invoices));
     if (items.length === 0) {
       console.info("[collection-notify] skip_no_items", source);
       return;
     }
 
-    const payload: NotificationPayload = {
-      event: "invoice_collected",
-      source,
-      generatedAt: new Date().toISOString(),
-      count: items.length,
-      actor: getActorInfo(actor),
-      items,
-    };
+    await ensureDeliveryLogs(items, actorInfo, source);
 
-    const channels: Array<{ name: "telegram" | "webhook"; task: Promise<void> }> = [];
-    if (hasTelegramConfig) {
-      channels.push({ name: "telegram", task: sendTelegramNotification(payload) });
+    console.info(
+      "[collection-notify] start",
+      JSON.stringify({
+        source,
+        count: items.length,
+        channels: activeChannels,
+        force: !!options.force,
+        invoiceNumbers: items.slice(0, 10).map((item) => item.invoiceNumber || item.invoiceId),
+      })
+    );
+
+    if (activeChannels.includes("telegram")) {
+      await deliverTelegramNotifications(items, actorInfo, source, !!options.force);
     }
-    if (hasWebhookConfig) {
-      channels.push({ name: "webhook", task: sendWebhookNotification(payload) });
+
+    if (activeChannels.includes("webhook")) {
+      await deliverWebhookNotifications(items, actorInfo, source, !!options.force);
     }
-
-    const results = await Promise.allSettled(channels.map((channel) => channel.task));
-    results.forEach((result, index) => {
-      const channelName = channels[index]?.name || `channel_${index}`;
-      if (result.status === "fulfilled") {
-        console.info("[collection-notify] success", channelName, source, payload.count);
-        return;
-      }
-
-      console.error("[collection-notify] error", channelName, source, result.reason);
-    });
   } catch (error) {
     console.error("[collection-notify] fatal", source, error);
   }
@@ -373,9 +588,19 @@ export const sendCollectedInvoiceNotifications = async (
 export const queueCollectedInvoiceNotifications = (
   invoices: NotificationInvoice[],
   actor?: JwtPayload | null,
-  source = "unknown"
+  source = "unknown",
+  options: SendCollectedNotificationOptions = {}
 ): void => {
-  void sendCollectedInvoiceNotifications(invoices, actor, source);
+  const task = () => {
+    void sendCollectedInvoiceNotifications(invoices, actor, source, options);
+  };
+
+  if (typeof setImmediate === "function") {
+    setImmediate(task);
+    return;
+  }
+
+  void Promise.resolve().then(task);
 };
 
 export const didBecomeCollected = (

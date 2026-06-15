@@ -6,7 +6,6 @@ import mongoose from "mongoose";
 import {
   didBecomeCollected,
   queueCollectedInvoiceNotifications,
-  sendCollectedInvoiceNotifications,
 } from "../utils/collectionNotifications";
 import { parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
 import { normalizeRecordBookCode } from "../utils/recordBookCode";
@@ -89,7 +88,7 @@ export const toggleInvoiceStatus = async (req: Request, res: Response) => {
     await invoice.save();
 
     if (field === "collectionStatus" && shouldNotifyCollected) {
-      await sendCollectedInvoiceNotifications([invoice.toObject()], req.user, "toggle_invoice_status");
+      queueCollectedInvoiceNotifications([invoice.toObject()], req.user, "toggle_invoice_status");
     }
 
     res.status(200).json(invoice);
@@ -134,7 +133,7 @@ export const updateCollectionDateByAdmin = async (req: Request, res: Response) =
 
     await invoice.save();
     if (shouldNotifyCollected) {
-      await sendCollectedInvoiceNotifications([invoice.toObject()], req.user, "admin_update_collection_date");
+      queueCollectedInvoiceNotifications([invoice.toObject()], req.user, "admin_update_collection_date");
     }
     return res.status(200).json(invoice);
   } catch (err) {
@@ -242,7 +241,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     });
 
     if (collectedInvoices.length > 0) {
-      await sendCollectedInvoiceNotifications(collectedInvoices, req.user, "bulk_update_invoices");
+      queueCollectedInvoiceNotifications(collectedInvoices, req.user, "bulk_update_invoices");
     }
 
     return res.status(200).json({

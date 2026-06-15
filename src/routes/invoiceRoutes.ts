@@ -43,6 +43,10 @@ import {
   searchInvoicesByDate,
   searchInvoicesByStationCode,
 } from "../controllers/invoice.query.controller";
+import {
+  getCollectionDeliverySummary,
+  replayCollectionDelivery,
+} from "../controllers/collectionDeliveryController";
 
 const router = Router();
 
@@ -77,6 +81,12 @@ router.post(
 router.get("/summary", authenticate, getInvoiceSummary);
 router.get("/collectsummary", authenticate, getCollectionSummary);
 router.get("/daily-summary", authenticate, getDailyCollectionSummary);
+router.get(
+  "/collection-delivery-summary",
+  authenticate,
+  authorize(["admin"]),
+  getCollectionDeliverySummary
+);
 router.get("/search", authenticate, searchInvoice);
 router.get("/search-by-station", authenticate, searchInvoicesByStationCode);
 
@@ -116,5 +126,11 @@ router.patch("/:invoiceId/collection-date", authenticate, authorize(["admin"]), 
 router.patch("/bulk-update", authenticate, bulkUpdateInvoices);
 router.post("/sync-duplicates", authenticate, authorize(["admin"]), syncDuplicateInvoiceInfo);
 router.post("/cleanup-duplicates", authenticate, authorize(["admin"]), cleanupRedundantDuplicates);
+router.post(
+  "/collection-delivery-replay",
+  authenticate,
+  authorize(["admin"]),
+  replayCollectionDelivery
+);
 
 export default router;
