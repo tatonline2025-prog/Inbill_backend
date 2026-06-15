@@ -12,6 +12,8 @@ dayjs.extend(timezone);
 
 const TZ = "Asia/Ho_Chi_Minh";
 const FETCH_TIMEOUT_MS = 10_000;
+const NOTIFICATION_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+const recentCollectedNotificationKeys = new Map<string, number>();
 
 type NotificationInvoice = Partial<IInvoice> & {
   _id?: unknown;
@@ -69,6 +71,38 @@ const normalizeId = (value: unknown): string => {
 };
 
 const normalizeText = (value: unknown): string => String(value || "").trim();
+
+const buildRecentNotificationKey = (invoice: NotificationInvoice): string => {
+  const invoiceId = normalizeId(invoice._id);
+  const invoiceNumber = normalizeText(invoice.invoiceNumber);
+  const collectionMinute = dayjs(invoice.collectionDate || new Date())
+    .tz(TZ)
+    .format("YYYY-MM-DDTHH:mm");
+
+  return `${invoiceId || invoiceNumber}:${collectionMinute}`;
+};
+
+const filterRecentlyNotifiedInvoices = (invoices: NotificationInvoice[]): NotificationInvoice[] => {
+  const now = Date.now();
+
+  for (const [key, timestamp] of recentCollectedNotificationKeys.entries()) {
+    if (now - timestamp > NOTIFICATION_DEDUP_WINDOW_MS) {
+      recentCollectedNotificationKeys.delete(key);
+    }
+  }
+
+  return invoices.filter((invoice) => {
+    const key = buildRecentNotificationKey(invoice);
+    const previousTimestamp = recentCollectedNotificationKeys.get(key);
+
+    if (previousTimestamp && now - previousTimestamp <= NOTIFICATION_DEDUP_WINDOW_MS) {
+      return false;
+    }
+
+    recentCollectedNotificationKeys.set(key, now);
+    return true;
+  });
+};
 
 const parseAmountValue = (value: unknown): number => {
   const digits = String(value || "").replace(/[^\d-]/g, "");
@@ -270,6 +304,12 @@ export const sendCollectedInvoiceNotifications = async (
 ) : Promise<void> => {
   if (!Array.isArray(invoices) || invoices.length === 0) return;
 
+  const filteredInvoices = filterRecentlyNotifiedInvoices(invoices);
+  if (filteredInvoices.length === 0) {
+    console.info("[collection-notify] skip_duplicate", source, invoices.length);
+    return;
+  }
+
   const hasTelegramConfig =
     !!String(process.env.INVOICE_COLLECT_TELEGRAM_BOT_TOKEN || "").trim() &&
     !!String(process.env.INVOICE_COLLECT_TELEGRAM_CHAT_ID || "").trim();
@@ -282,17 +322,17 @@ export const sendCollectedInvoiceNotifications = async (
       "[collection-notify] start",
       JSON.stringify({
         source,
-        count: invoices.length,
+        count: filteredInvoices.length,
         hasTelegramConfig,
         hasWebhookConfig,
-        invoiceNumbers: invoices
+        invoiceNumbers: filteredInvoices
           .slice(0, 10)
           .map((invoice) => normalizeText(invoice.invoiceNumber || invoice._id))
           .filter(Boolean),
       })
     );
 
-    const items = await buildNotificationItems(invoices);
+    const items = await buildNotificationItems(filteredInvoices);
     if (items.length === 0) {
       console.info("[collection-notify] skip_no_items", source);
       return;
