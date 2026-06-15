@@ -36,22 +36,30 @@ type NotificationItem = {
   invoiceId: string;
   invoiceNumber: string;
   customerName: string;
+  name: string;
   customerAddress: string;
+  address: string;
   billingPeriod: string;
+  billing_period: string;
   recordBookCode: string;
+  stationCode: string;
   currentAmountRaw: string;
   currentAmountValue: number;
   currentAmountDisplay: string;
+  currentAmount: string;
   previousAmountRaw: string;
   previousAmountValue: number;
   previousAmountDisplay: string;
+  previousAmount: string;
   totalAmountRaw: string;
   totalAmountValue: number;
   totalAmountDisplay: string;
+  totalAmount: string;
   collectionDateIso: string;
   collectionDateDisplay: string;
   assignedToId: string;
   assignedToName: string;
+  assignedName: string;
 };
 
 type NotificationPayload = {
@@ -272,22 +280,30 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
       invoiceId,
       invoiceNumber: normalizeText(invoice.invoiceNumber),
       customerName: normalizeText(invoice.customerName),
+      name: normalizeText(invoice.customerName),
       customerAddress: normalizeText(invoice.customerAddress),
+      address: normalizeText(invoice.customerAddress),
       billingPeriod: normalizeText(invoice.billing_period),
+      billing_period: normalizeText(invoice.billing_period),
       recordBookCode: normalizeText(invoice.recordBookCode),
+      stationCode: normalizeText(invoice.recordBookCode),
       currentAmountRaw: normalizeText(invoice.currentAmount),
       currentAmountValue,
       currentAmountDisplay: formatAmountValue(currentAmountValue),
+      currentAmount: String(currentAmountValue),
       previousAmountRaw: normalizeText(invoice.previousAmount),
       previousAmountValue,
       previousAmountDisplay: formatAmountValue(previousAmountValue),
+      previousAmount: String(previousAmountValue),
       totalAmountRaw: normalizeText(invoice.totalAmount),
       totalAmountValue,
       totalAmountDisplay: formatAmountValue(totalAmountValue),
+      totalAmount: String(totalAmountValue),
       collectionDateIso: dateInfo.iso,
       collectionDateDisplay: dateInfo.display,
       assignedToId,
       assignedToName: assignedUserMap.get(assignedToId) || "",
+      assignedName: assignedUserMap.get(assignedToId) || "",
     };
   });
 };
