@@ -32,25 +32,19 @@ function doPost(e) {
     var updatedCount = 0;
 
     items.forEach(function(item) {
-      var eventKey = String(item.eventKey || "").trim();
-      if (!eventKey) {
-        eventKey =
-          String(item.invoiceId || item.invoiceNumber || "").trim() +
-          ":" +
-          String(item.collectionDateIso || item.collectionDateDisplay || "").trim();
-      }
+      var rowKey = resolveSheetRowKey_(item);
 
       var rowValues = buildSheetRow_(item);
-      var targetRow = existingKeyMap[eventKey];
+      var targetRow = existingKeyMap[rowKey];
 
       if (targetRow) {
         sheet.getRange(targetRow, START_COLUMN, 1, VALUE_COLUMN_COUNT).setValues([rowValues]);
-        sheet.getRange(targetRow, EVENT_KEY_COLUMN).setValue(eventKey);
+        sheet.getRange(targetRow, EVENT_KEY_COLUMN).setValue(rowKey);
         updatedCount += 1;
         return;
       }
 
-      newRows.push({ eventKey: eventKey, values: rowValues });
+      newRows.push({ rowKey: rowKey, values: rowValues });
     });
 
     var appendedCount = 0;
@@ -73,7 +67,7 @@ function doPost(e) {
       sheet
         .getRange(startRow, EVENT_KEY_COLUMN, newRows.length, 1)
         .setValues(newRows.map(function(entry) {
-          return [entry.eventKey];
+          return [entry.rowKey];
         }));
 
       appendedCount = newRows.length;
@@ -109,6 +103,25 @@ function buildSheetRow_(item) {
   ];
 }
 
+function resolveSheetRowKey_(item) {
+  var stableKey = String(item.sheetRowKey || "").trim();
+  if (stableKey) {
+    return stableKey;
+  }
+
+  var invoiceId = String(item.invoiceId || "").trim();
+  if (invoiceId) {
+    return invoiceId;
+  }
+
+  var eventKey = String(item.eventKey || "").trim();
+  if (eventKey) {
+    return normalizeStoredRowKey_(eventKey);
+  }
+
+  return String(item.invoiceNumber || "").trim();
+}
+
 function buildEventKeyMap_(sheet, lastRow) {
   if (lastRow < START_ROW) {
     return {};
@@ -120,15 +133,31 @@ function buildEventKeyMap_(sheet, lastRow) {
   var result = {};
 
   for (var i = 0; i < keyValues.length; i++) {
-    var eventKey = String(keyValues[i][0] || "").trim();
-    if (!eventKey) {
+    var storedKey = String(keyValues[i][0] || "").trim();
+    if (!storedKey) {
       continue;
     }
 
-    result[eventKey] = START_ROW + i;
+    var rowNumber = START_ROW + i;
+    result[storedKey] = rowNumber;
+    result[normalizeStoredRowKey_(storedKey)] = rowNumber;
   }
 
   return result;
+}
+
+function normalizeStoredRowKey_(value) {
+  var normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  var match = normalized.match(/^(.+):\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  return normalized;
 }
 
 function jsonResponse_(payload, statusCode) {

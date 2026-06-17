@@ -33,6 +33,7 @@ type NotificationInvoice = Partial<IInvoice> & {
 
 type NotificationItem = {
   eventKey: string;
+  sheetRowKey: string;
   invoiceId: string;
   invoiceNumber: string;
   customerName: string;
@@ -277,6 +278,7 @@ const buildNotificationItems = async (invoices: NotificationInvoice[]): Promise<
 
     return {
       eventKey: buildCollectedNotificationEventKey(invoice),
+      sheetRowKey: invoiceId || normalizeText(invoice.invoiceNumber),
       invoiceId,
       invoiceNumber: normalizeText(invoice.invoiceNumber),
       customerName: normalizeText(invoice.customerName),
