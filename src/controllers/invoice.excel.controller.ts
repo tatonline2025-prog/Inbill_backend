@@ -836,17 +836,18 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
     }
 
     // Dynamic sort for collected export
-    // Mặc định: status=paid → sắp xếp theo collectionDate giảm dần (mới nhất lên đầu)
+    // Mặc định: status=paid → sắp xếp theo collectionDate tăng dần (cũ nhất lên đầu)
     //          status khác → sắp xếp theo thứ tự import gốc
     const defaultSortCollectedExp: any =
       status === "paid"
-        ? { collectionDate: -1, _id: 1 }
+        ? { collectionDate: 1, _id: 1 }
         : { sortPriority: -1, excelRowIndex: 1, excelOrder: 1, _id: 1 };
     let sortObjCollectedExp: any = defaultSortCollectedExp;
     
     if (sortField && sortDirection !== "none") {
       const direction = parseInt(sortDirection) || 1;
       sortObjCollectedExp = { [sortField]: direction, ...defaultSortCollectedExp };
+      sortObjCollectedExp[sortField] = direction;
     }
 
     const invoices = await Invoice.find(match)
