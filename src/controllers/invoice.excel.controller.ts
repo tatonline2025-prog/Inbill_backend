@@ -887,8 +887,8 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
         { header: "Địa chỉ", key: "diaChi", width: 35 },
         { header: "Trạm", key: "tram", width: 10 },
         { header: "Người phụ trách", key: "nguoiPhuTrach", width: 20 },
-        { header: "Đã thu", key: "daThu", width: 10 },
         { header: "Thời điểm thu", key: "thoiDiemThu", width: 18 },
+        { header: "Đã thu", key: "daThu", width: 10 },
       ],
       rows
     );
