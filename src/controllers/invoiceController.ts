@@ -844,16 +844,14 @@ export const deleteInvoicesByBillingPeriodAndAssignedUser = async (req: Request,
       if (selectedIds.includes("no_one")) {
         filter.$or = [
           ...(objectIds.length > 0 ? [{ assignedTo: { $in: objectIds } }] : []),
-          { assignedTo: { $exists: false } },
-          { assignedTo: null },
-          { assignedTo: "" },
+          { $expr: { $eq: [{ $ifNull: ["$assignedTo", ""] }, ""] } },
         ];
       } else {
         filter.assignedTo = { $in: objectIds };
       }
     } else if (assignedUserId && assignedUserId !== "all") {
       if (assignedUserId === "no_one") {
-        filter.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
+        filter.$or = [{ $expr: { $eq: [{ $ifNull: ["$assignedTo", ""] }, ""] } }];
       } else if (mongoose.Types.ObjectId.isValid(String(assignedUserId))) {
         filter.assignedTo = new mongoose.Types.ObjectId(String(assignedUserId));
       } else {
