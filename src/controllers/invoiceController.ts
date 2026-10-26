@@ -822,9 +822,9 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
 
 export const deleteInvoicesByBillingPeriodAndAssignedUser = async (req: Request, res: Response) => {
   try {
-    const { billing_period, assignedUserId } = req.query;
+    const { billing_period, assignedUserId, assignedUserIds } = req.query;
 
-    if (!billing_period) {
+    if (typeof billing_period !== "string" || !billing_period.trim()) {
       return res.status(400).json({ message: "Thiếu kỳ hóa đơn!" });
     }
 
@@ -832,7 +832,26 @@ export const deleteInvoicesByBillingPeriodAndAssignedUser = async (req: Request,
       billing_period: String(billing_period).trim(),
     };
 
-    if (assignedUserId && assignedUserId !== "all") {
+    if (assignedUserIds !== undefined) {
+      if (typeof assignedUserIds !== "string") {
+        return res.status(400).json({ message: "Danh sách người phụ trách không hợp lệ." });
+      }
+      const selectedIds = [...new Set(assignedUserIds.split(",").map((id) => id.trim()))];
+      if (selectedIds.some((id) => id !== "no_one" && !mongoose.Types.ObjectId.isValid(id))) {
+        return res.status(400).json({ message: "Vui lòng chọn người phụ trách hợp lệ." });
+      }
+      const objectIds = selectedIds.filter((id) => id !== "no_one").map((id) => new mongoose.Types.ObjectId(id));
+      if (selectedIds.includes("no_one")) {
+        filter.$or = [
+          ...(objectIds.length > 0 ? [{ assignedTo: { $in: objectIds } }] : []),
+          { assignedTo: { $exists: false } },
+          { assignedTo: null },
+          { assignedTo: "" },
+        ];
+      } else {
+        filter.assignedTo = { $in: objectIds };
+      }
+    } else if (assignedUserId && assignedUserId !== "all") {
       if (assignedUserId === "no_one") {
         filter.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }, { assignedTo: "" }];
       } else if (mongoose.Types.ObjectId.isValid(String(assignedUserId))) {
@@ -846,7 +865,7 @@ export const deleteInvoicesByBillingPeriodAndAssignedUser = async (req: Request,
 
     return res.status(200).json({
       message:
-        assignedUserId && assignedUserId !== "all"
+        assignedUserIds !== undefined || (assignedUserId && assignedUserId !== "all")
           ? `Đã xoá ${result.deletedCount} hoá đơn của kỳ ${billing_period} theo người phụ trách đã chọn`
           : `Đã xoá ${result.deletedCount} hoá đơn của kỳ ${billing_period}`,
       deletedCount: result.deletedCount,
