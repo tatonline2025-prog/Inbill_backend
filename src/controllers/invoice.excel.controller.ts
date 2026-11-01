@@ -790,7 +790,7 @@ export const exportExcelByUser = async (req: Request, res: Response) => {
 
 export const exportExcelCollected = async (req: Request, res: Response) => {
   try {
-    const { fromDate, toDate, isClosed, status, userIds, sortField, sortDirection } = req.query as any;
+    const { fromDate, toDate, isClosed, status, userIds, sortField, sortDirection, areaPrefixes, unrestrictedUserIds } = req.query as any;
     if (!fromDate || !toDate) {
       return res.status(400).json({ message: "Vui lòng chọn khoảng thời gian (Từ ngày - Đến ngày)." });
     }
@@ -833,6 +833,25 @@ export const exportExcelCollected = async (req: Request, res: Response) => {
 
     if (isClosed && isClosed !== "all") {
       match.isPaid = isClosed === "true";
+    }
+
+    if (areaPrefixes !== undefined) {
+      if (typeof areaPrefixes !== "string" || (unrestrictedUserIds !== undefined && typeof unrestrictedUserIds !== "string")) {
+        return res.status(400).json({ message: "Bộ lọc khu vực không hợp lệ." });
+      }
+      const prefixes = [...new Set(areaPrefixes.split(",").map((prefix) => prefix.trim()).filter(Boolean))];
+      const flexibleIds = String(unrestrictedUserIds || "").split(",").map((id) => id.trim()).filter(Boolean);
+      if (flexibleIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+        return res.status(400).json({ message: "Người phụ trách khu vực Tự do không hợp lệ." });
+      }
+      const areaConditions: Record<string, unknown>[] = prefixes.map((prefix) => ({ invoiceNumber: buildPrefixRegex(prefix) }));
+      if (flexibleIds.length > 0) {
+        areaConditions.push({ assignedTo: { $in: flexibleIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+      }
+      if (areaConditions.length === 0) {
+        return res.status(400).json({ message: "Vui lòng chọn ít nhất một khu vực để xuất file." });
+      }
+      addAndCondition(match, { $or: areaConditions });
     }
 
     // Dynamic sort for collected export
