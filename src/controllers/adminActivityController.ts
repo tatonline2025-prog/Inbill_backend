@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import AdminActivity from "../models/adminActivityModel";
+import { getAdminTelegramConfig, processPendingAdminTelegram } from "../utils/adminActivityTelegram";
 
 export const listAdminActivities = async (req: Request, res: Response) => {
   if (req.user?.role !== "admin") return res.status(403).json({ message: "Chỉ admin được xem thông báo." });
@@ -31,5 +32,21 @@ export const markAdminActivitiesRead = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("markAdminActivitiesRead:", error);
     return res.status(500).json({ message: "Không cập nhật được thông báo." });
+  }
+};
+
+export const retryAdminActivityTelegram = async (req: Request, res: Response) => {
+  if (req.user?.role !== "admin") return res.status(403).json({ message: "Chỉ admin được gửi lại thông báo." });
+  if (!getAdminTelegramConfig()) return res.status(400).json({ message: "Chưa cấu hình bot và nơi nhận Telegram của admin." });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: "Thông báo không hợp lệ." });
+  try {
+    const item = await AdminActivity.findOneAndUpdate({ _id: req.params.id, telegramStatus: "failed" }, { $set: {
+      telegramStatus: "pending", telegramAttempts: 0, telegramNextAttemptAt: new Date(), telegramLockedUntil: null, telegramError: "",
+    } });
+    if (!item) return res.status(409).json({ message: "Thông báo không ở trạng thái gửi lỗi." });
+    void processPendingAdminTelegram();
+    return res.json({ message: "Đã đưa thông báo vào hàng đợi gửi lại Telegram." });
+  } catch {
+    return res.status(500).json({ message: "Không gửi lại được thông báo Telegram." });
   }
 };

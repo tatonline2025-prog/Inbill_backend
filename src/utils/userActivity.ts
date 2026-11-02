@@ -1,5 +1,6 @@
 import AdminActivity from "../models/adminActivityModel";
 import { JwtPayload } from "../types/jwtPayload";
+import { getAdminTelegramConfig, processPendingAdminTelegram } from "./adminActivityTelegram";
 
 export const assignedUserId = (value: any): string => String(value?._id ?? value ?? "");
 export const ownsRecord = (actor: JwtPayload, record: { assignedTo?: unknown }): boolean =>
@@ -27,7 +28,9 @@ export async function recordUserActivity(actor: JwtPayload | undefined, action: 
   if (!actor || actor.role === "admin") return;
   try {
     await AdminActivity.create({ ...data, action, title: titles[action], actorId: actor._id,
-      actorName: actor.fullName || actor.username || "User", actorUsername: actor.username || "" });
+      actorName: actor.fullName || actor.username || "User", actorUsername: actor.username || "",
+      telegramStatus: getAdminTelegramConfig() ? "pending" : "awaiting_config" });
+    void processPendingAdminTelegram();
   } catch (error) {
     console.error("Không ghi được thông báo thao tác user:", error);
   }

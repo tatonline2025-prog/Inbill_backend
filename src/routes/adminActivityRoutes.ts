@@ -1,8 +1,11 @@
 import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth";
-import { listAdminActivities, markAdminActivitiesRead } from "../controllers/adminActivityController";
+import { listAdminActivities, markAdminActivitiesRead, retryAdminActivityTelegram } from "../controllers/adminActivityController";
+import { startAdminTelegramWorker } from "../utils/adminActivityTelegram";
+startAdminTelegramWorker();
 const router = Router();
 router.use(authenticate, authorize(["admin"]));
 router.get("/", listAdminActivities);
 router.patch("/:id/read", markAdminActivitiesRead);
+router.post("/:id/telegram-retry", retryAdminActivityTelegram);
 export default router;
