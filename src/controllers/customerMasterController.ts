@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 import CustomerMaster from "../models/customerMasterModel";
 import Invoice from "../models/invoiceModel";
 import { normalizeRecordBookCode } from "../utils/recordBookCode";
+import { normalizeMoneyString, parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
+import { JwtPayload } from "../types/jwtPayload";
+import { activityChanges, ownsRecord, recordUserActivity } from "../utils/userActivity";
 
 const norm = (v: any) => (v === null || v === undefined ? "" : String(v).trim());
 const hasVal = (v: any) => norm(v) !== "";
@@ -12,11 +15,12 @@ const hasVal = (v: any) => norm(v) !== "";
  * - Field tồn tại trong master mà còn rỗng → bổ sung từ invoice.
  * - Field hiện đã có giá trị → giữ nguyên (chỉ cập nhật khi truyền force=true).
  */
-export const upsertCustomerMasterFromInvoice = async (inv: any, opts?: { force?: boolean }) => {
+export const upsertCustomerMasterFromInvoice = async (inv: any, opts?: { force?: boolean; actor?: JwtPayload }) => {
   if (!inv || !hasVal(inv.invoiceNumber)) return;
   const force = opts?.force === true;
   const invoiceNumber = norm(inv.invoiceNumber);
   const existing = await CustomerMaster.findOne({ invoiceNumber }).lean();
+  if (opts?.actor && existing && !ownsRecord(opts.actor, existing)) return;
 
   const fields: Record<string, any> = {
     customerName: norm(inv.customerName),
@@ -40,7 +44,7 @@ export const upsertCustomerMasterFromInvoice = async (inv: any, opts?: { force?:
         if (force && v) $set[k] = v;
         else if (!existing.assignedTo && v) $set[k] = v;
       } else {
-        if (force && hasVal(v)) $set[k] = v;
+        if (force) $set[k] = v;
         else if (!hasVal((existing as any)[k]) && hasVal(v)) $set[k] = v;
       }
     });
@@ -52,11 +56,12 @@ export const upsertCustomerMasterFromInvoice = async (inv: any, opts?: { force?:
   } else {
     update.$inc = { seenCount: 1 };
   }
-  await CustomerMaster.updateOne({ invoiceNumber }, update, { upsert: true });
+  const ownerScope = opts?.actor && opts.actor.role !== "admin" ? { assignedTo: opts.actor._id } : {};
+  await CustomerMaster.updateOne({ invoiceNumber, ...ownerScope }, update, { upsert: !existing });
 };
 
 /** Bulk upsert nhiều invoice cùng lúc (dùng cho Excel import). */
-export const upsertManyCustomerMasters = async (invoices: any[]) => {
+export const upsertManyCustomerMasters = async (invoices: any[], opts?: { actor?: JwtPayload }) => {
   if (!Array.isArray(invoices) || invoices.length === 0) return;
   // Gom theo invoiceNumber để giảm số op
   const byCode = new Map<string, any>();
@@ -84,7 +89,10 @@ export const upsertManyCustomerMasters = async (invoices: any[]) => {
     .lean();
   const existingMap = new Map(existingItems.map((item) => [norm(item.invoiceNumber), item]));
 
-  const ops = Array.from(byCode.values()).map((inv) => {
+  const ops = Array.from(byCode.values()).filter((inv) => {
+    const existing = existingMap.get(norm(inv.invoiceNumber));
+    return !opts?.actor || !existing || ownsRecord(opts.actor, existing);
+  }).map((inv) => {
     const invoiceNumber = norm(inv.invoiceNumber);
     const existing = existingMap.get(invoiceNumber);
     const fields: Record<string, any> = {
@@ -124,9 +132,9 @@ export const upsertManyCustomerMasters = async (invoices: any[]) => {
 
     return {
       updateOne: {
-        filter: { invoiceNumber },
+        filter: { invoiceNumber, ...(opts?.actor && opts.actor.role !== "admin" ? { assignedTo: opts.actor._id } : {}) },
         update,
-        upsert: true,
+        upsert: !existing,
       },
     };
   });
@@ -138,6 +146,7 @@ export const upsertManyCustomerMasters = async (invoices: any[]) => {
 
 /** GET /api/customers — list with search + pagination */
 export const listCustomerMaster = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
     const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || "50"), 10)));
@@ -154,7 +163,9 @@ export const listCustomerMaster = async (req: Request, res: Response) => {
         { recordBookCode: { $regex: search, $options: "i" } },
       ];
     }
-    if (assignedTo) {
+    if (req.user.role !== "admin") {
+      match.assignedTo = new mongoose.Types.ObjectId(req.user._id);
+    } else if (assignedTo) {
       if (assignedTo === "none") match.assignedTo = null;
       else if (mongoose.isValidObjectId(assignedTo)) match.assignedTo = new mongoose.Types.ObjectId(assignedTo);
     }
@@ -177,23 +188,42 @@ export const listCustomerMaster = async (req: Request, res: Response) => {
 
 /** PUT /api/customers/:id — update master fields */
 export const updateCustomerMaster = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: "ID không hợp lệ." });
+    const existing = await CustomerMaster.findById(id).lean();
+    if (!existing) return res.status(404).json({ message: "Không tìm thấy khách hàng." });
+    if (!ownsRecord(req.user, existing)) return res.status(403).json({ message: "Bạn chỉ được sửa khách hàng của mình." });
     const allowed: Record<string, any> = {};
     const fields = ["customerName", "customerAddress", "customerPhone", "province", "recordBookCode", "note"];
     fields.forEach((f) => {
-      if (f in req.body) allowed[f] = norm((req.body as any)[f]);
+      if (f in req.body) allowed[f] = f === "recordBookCode" ? normalizeRecordBookCode(req.body[f]) : norm(req.body[f]);
     });
     if ("assignedTo" in req.body) {
       const v = req.body.assignedTo;
+      if (req.user.role !== "admin" && v !== undefined && String(v || "") !== String(req.user._id)) {
+        return res.status(403).json({ message: "Bạn không được chuyển khách hàng cho tài khoản khác." });
+      }
       if (!v) allowed.assignedTo = null;
       else if (mongoose.isValidObjectId(v)) allowed.assignedTo = new mongoose.Types.ObjectId(String(v));
     }
-    const updated = await CustomerMaster.findByIdAndUpdate(id, { $set: allowed }, { new: true })
+    const updated = await CustomerMaster.findOneAndUpdate({ _id: id,
+      ...(req.user.role !== "admin" ? { assignedTo: req.user._id } : {}) }, { $set: allowed }, { new: true, runValidators: true })
       .populate("assignedTo", "fullName username")
       .lean();
     if (!updated) return res.status(404).json({ message: "Không tìm thấy bản ghi." });
+    if (req.user.role !== "admin") {
+      const customerFields: Record<string, unknown> = {};
+      ["customerName", "customerAddress", "customerPhone", "recordBookCode"].forEach((field) => {
+        if (field in allowed) customerFields[field] = allowed[field];
+      });
+      if (Object.keys(customerFields).length) await Invoice.updateMany(
+        { invoiceNumber: updated.invoiceNumber, assignedTo: req.user._id }, { $set: customerFields });
+    }
+    const changes = activityChanges(existing, updated);
+    if (changes.length) await recordUserActivity(req.user, "customer_updated", { entityId: updated._id,
+      customerCode: updated.invoiceNumber, message: `Cập nhật khách hàng ${updated.invoiceNumber} — ${updated.customerName}.`, changes });
     return res.status(200).json({ item: updated });
   } catch (err) {
     console.error("updateCustomerMaster error:", err);
@@ -226,23 +256,24 @@ export const deleteCustomerMaster = async (req: Request, res: Response) => {
  *  - Lấy thông tin KH (tên, địa chỉ, trạm, NPT, tỉnh) từ master.
  */
 export const createInvoiceFromMaster = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: "ID không hợp lệ." });
     const master = await CustomerMaster.findById(id).lean();
     if (!master) return res.status(404).json({ message: "Không tìm thấy KH trong danh sách tổng." });
+    if (!ownsRecord(req.user, master)) return res.status(403).json({ message: "Bạn chỉ được thêm hóa đơn cho khách hàng của mình." });
 
     const billing_period = norm(req.body.billing_period);
     if (!billing_period) return res.status(400).json({ message: "Thiếu kỳ thanh toán." });
-    const totalNum = Number(String(req.body.totalAmount ?? "").replace(/[^\d.-]/g, ""));
+    const resolvedAmounts = resolveInvoiceAmounts({ totalAmount: req.body.totalAmount,
+      previousAmount: req.body.previousAmount, currentAmount: req.body.currentAmount });
+    const totalNum = parseMoneyNumber(resolvedAmounts.totalAmount);
     if (!Number.isFinite(totalNum) || totalNum <= 0) {
       return res.status(400).json({ message: "Tổng tiền phải > 0." });
     }
-    let prevNum = Number(String(req.body.previousAmount ?? "").replace(/[^\d.-]/g, ""));
-    if (!Number.isFinite(prevNum) || prevNum < 0) prevNum = 0;
-    let curNum = Number(String(req.body.currentAmount ?? "").replace(/[^\d.-]/g, ""));
-    if (!Number.isFinite(curNum) || curNum <= 0) curNum = Math.max(0, totalNum - prevNum);
-    if (prevNum === 0) curNum = totalNum;
+    const prevNum = parseMoneyNumber(resolvedAmounts.previousAmount);
+    const curNum = parseMoneyNumber(resolvedAmounts.currentAmount);
 
     // Chống trùng (invoiceNumber + billing_period + assignedTo)
     const dupFilter: any = {
@@ -264,17 +295,20 @@ export const createInvoiceFromMaster = async (req: Request, res: Response) => {
       customerAddress: master.customerAddress || "",
       customerPhone: master.customerPhone || "",
       province: master.province || "",
-      recordBookCode: master.recordBookCode || "",
+      recordBookCode: normalizeRecordBookCode(master.recordBookCode),
       assignedTo: master.assignedTo || null,
       billing_period,
-      currentAmount: String(Math.trunc(curNum)),
-      previousAmount: String(Math.trunc(prevNum)),
-      totalAmount: String(Math.trunc(totalNum)),
+      currentAmount: normalizeMoneyString(curNum),
+      previousAmount: normalizeMoneyString(prevNum),
+      totalAmount: normalizeMoneyString(totalNum),
       issueDate: new Date(),
       sortPriority: 1,
+      uploadedBy: req.user._id,
     });
     // Cập nhật lastBillingPeriod
-    await CustomerMaster.updateOne({ _id: master._id }, { $set: { lastBillingPeriod: billing_period }, $inc: { seenCount: 1 } });
+    await CustomerMaster.updateOne({ _id: master._id, ...(req.user.role !== "admin" ? { assignedTo: req.user._id } : {}) }, { $set: { lastBillingPeriod: billing_period }, $inc: { seenCount: 1 } });
+    await recordUserActivity(req.user, "invoice_created", { entityId: created._id, customerCode: created.invoiceNumber,
+      message: `Thêm hóa đơn ${created.invoiceNumber} từ khách hàng của mình.`, details: { billingPeriod: billing_period, totalAmount: created.totalAmount } });
 
     return res.status(201).json({ message: "Đã tạo hóa đơn từ danh sách tổng.", invoice: created });
   } catch (err) {

@@ -11,6 +11,8 @@ import { upsertManyCustomerMasters } from "./customerMasterController";
 import { ensureAreaPrefixEntries, hasFlexibleArea } from "../utils/areaPrefix";
 import { parseMoneyNumber, resolveInvoiceAmounts } from "../utils/money";
 import { normalizeRecordBookCode } from "../utils/recordBookCode";
+import { JwtPayload } from "../types/jwtPayload";
+import { recordUserActivity } from "../utils/userActivity";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -237,6 +239,7 @@ const buildInvoiceDoc = (
     invoiceNumber: invoiceNumber.trim(),
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
+    customerPhone: pickField(row, ["SĐT", "SDT", "Số điện thoại", "customerPhone"]),
     recordBookCode: normalizeRecordBookCode(recordBookCode),
     totalAmount: resolvedAmounts.totalAmount,
     currentAmount: resolvedAmounts.currentAmount,
@@ -255,23 +258,25 @@ const buildDocsFromRows = async ({
   billingPeriod,
   batchId,
   fallbackAssignedTo,
+  ownerUserId,
 }: {
   rows: RowMap[];
   billingPeriod: string;
   batchId: number;
   fallbackAssignedTo?: string;
+  ownerUserId?: string;
 }) => {
-  const assigneeLookup = await buildAssigneeLookup();
+  const assigneeLookup = ownerUserId ? null : await buildAssigneeLookup();
   const docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>> = [];
   const unmatchedAssignees: Array<{ rowIndex: number; value: string }> = [];
   const ambiguousAssignees: Array<{ rowIndex: number; value: string }> = [];
 
   rows.forEach((row, idx) => {
     const rowIndex = idx + 2;
-    const rowAssigneeValue = pickField(row, ASSIGNEE_HEADER_KEYS);
-    let assignedTo = fallbackAssignedTo || undefined;
+    const rowAssigneeValue = ownerUserId ? "" : pickField(row, ASSIGNEE_HEADER_KEYS);
+    let assignedTo = ownerUserId || fallbackAssignedTo || undefined;
 
-    if (rowAssigneeValue) {
+    if (rowAssigneeValue && assigneeLookup) {
       const resolved = assigneeLookup.resolve(rowAssigneeValue);
       if (resolved.status === "matched") {
         assignedTo = resolved.userId;
@@ -331,7 +336,7 @@ const makeWorkbookBuffer = async (
  * - Nếu không khớp → chèn hóa đơn mới.
  */
 const upsertInvoiceDocs = async (
-  docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>>
+  docs: Array<NonNullable<ReturnType<typeof buildInvoiceDoc>>>, actor?: JwtPayload
 ) => {
   if (!docs.length) return { inserted: 0, modified: 0 };
   const hasVal = (v: unknown) =>
@@ -347,6 +352,7 @@ const upsertInvoiceDocs = async (
     const candidates: Record<string, unknown> = {
       customerName: doc.customerName,
       customerAddress: doc.customerAddress,
+      customerPhone: doc.customerPhone,
       recordBookCode: doc.recordBookCode,
       currentAmount: doc.currentAmount,
       previousAmount: doc.previousAmount,
@@ -363,6 +369,7 @@ const upsertInvoiceDocs = async (
     // Trường chỉ set khi tạo mới (giữ nguyên trạng thái thu/in/đóng cước khi trùng)
     const $setOnInsert: Record<string, unknown> = {
       createdAt: new Date(),
+      ...(actor ? { uploadedBy: actor._id } : {}),
     };
     return {
       updateOne: {
@@ -375,7 +382,7 @@ const upsertInvoiceDocs = async (
   const result = await Invoice.bulkWrite(ops, { ordered: false });
   // Đồng bộ vào danh sách tổng (CustomerMaster) - không chặn flow chính
   try {
-    await upsertManyCustomerMasters(docs);
+    await upsertManyCustomerMasters(docs, { actor });
   } catch (e) {
     console.error("upsertManyCustomerMasters (excel) error:", e);
   }
@@ -386,6 +393,7 @@ const upsertInvoiceDocs = async (
 };
 
 export const previewExcel = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const startedAt = Date.now();
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -393,7 +401,10 @@ export const previewExcel = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy file được tải lên." });
     }
 
-    const userId = String(req.body.userId || "");
+    const userId = req.user.role === "admin" ? String(req.body.userId || "") : req.user._id;
+    if (typeof req.body.billing_period !== "string" || !req.body.billing_period.trim()) {
+      return res.status(400).json({ message: "Vui lòng chọn kỳ hóa đơn." });
+    }
     if (!userId) {
       return res.status(400).json({ message: "Thiếu userId." });
     }
@@ -415,6 +426,7 @@ export const previewExcel = async (req: Request, res: Response) => {
     const { docs, unmatchedAssignees, ambiguousAssignees } = await buildDocsFromRows({
       rows,
       fallbackAssignedTo: userId,
+      ownerUserId: req.user.role === "admin" ? undefined : req.user._id,
       billingPeriod: String(req.body.billing_period || ""),
       batchId,
     });
@@ -438,7 +450,11 @@ export const previewExcel = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Khách hàng không tìm thấy dữ liệu hợp lệ trong file Excel." });
     }
 
-    const inserted = await upsertInvoiceDocs(docs);
+    const inserted = await upsertInvoiceDocs(docs, req.user);
+    await recordUserActivity(req.user, "invoices_uploaded", { count: docs.length,
+      message: `Tải danh sách ${docs.length} hóa đơn: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,
+      details: { fileName: files.excelFile[0].originalname, billingPeriod: String(req.body.billing_period || ""),
+        inserted: inserted.inserted, modified: inserted.modified, customerCodes: docs.slice(0, 20).map((doc) => doc.invoiceNumber) } });
     const elapsedMs = Date.now() - startedAt;
     return res.status(200).json({
       message: `Đã xử lý ${docs.length} hoá đơn trong ${(elapsedMs / 1000).toFixed(2)} giây: thêm mới ${inserted.inserted}, cập nhật ${inserted.modified}.`,

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import adminActivityRoutes from "./adminActivityRoutes";
 import {
   createInvoice,
   deleteInvoicesByBillingPeriodAndAssignedUser,
@@ -49,6 +50,7 @@ import {
 } from "../controllers/collectionDeliveryController";
 
 const router = Router();
+router.use("/admin-activity", adminActivityRoutes);
 
 // Cấu hình multer để lưu file trong bộ nhớ (memory storage)
 // Vì chúng ta chỉ cần đọc rồi bỏ đi, không cần lưu vào đĩa
@@ -61,7 +63,7 @@ const upload = multer({ storage: storage });
 router.post(
   "/upload-preview",
   authenticate,
-  authorize(["admin"]),
+  authorize(["admin", "user"]),
   upload.fields([
     { name: "excelFile", maxCount: 1 },
     { name: "userId", maxCount: 1 },

@@ -3,6 +3,7 @@ import Invoice, { IInvoice } from "../models/invoiceModel";
 import User, { IUser } from "../models/userModel";
 import { upsertCustomerMasterFromInvoice } from "./customerMasterController";
 import mongoose from "mongoose";
+import { activityChanges, ownsRecord, recordUserActivity } from "../utils/userActivity";
 import {
   didBecomeCollected,
   queueCollectedInvoiceNotifications,
@@ -506,6 +507,7 @@ export const markListInvoicesAsPaid = async (req: Request, res: Response) => {
 };
 
 export const createInvoice = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const {
       invoiceNumber,
@@ -518,7 +520,7 @@ export const createInvoice = async (req: Request, res: Response) => {
       totalAmount,
       recordBookCode,
       assignedTo,
-    } = req.body.newInvoice;
+    } = req.body?.newInvoice || {};
 
     const resolvedAmounts = resolveInvoiceAmounts({
       currentAmount,
@@ -534,10 +536,10 @@ export const createInvoice = async (req: Request, res: Response) => {
     // Admin không tự động trở thành người phụ trách khi tạo hóa đơn
     const isAdmin = req.user?.role === "admin";
     let finalAssignedTo: any = null;
-    if (assignedTo) {
+    if (!isAdmin) {
+      finalAssignedTo = req.user._id;
+    } else if (assignedTo) {
       finalAssignedTo = assignedTo;
-    } else if (!isAdmin) {
-      finalAssignedTo = req.user?._id;
     }
 
     const currentAmountStr = resolvedAmounts.currentAmount;
@@ -570,12 +572,16 @@ export const createInvoice = async (req: Request, res: Response) => {
       recordBookCode: normalizeRecordBookCode(recordBookCode),
       assignedTo: finalAssignedTo,
       createdAt: new Date(),
+      uploadedBy: req.user._id,
     });
 
     await newInvoice.save();
 
     // Đồng bộ vào danh sách tổng (không chặn flow chính)
-    try { await upsertCustomerMasterFromInvoice(newInvoice.toObject()); } catch (e) { console.error("upsert master (create) err:", e); }
+    try { await upsertCustomerMasterFromInvoice(newInvoice.toObject(), { actor: req.user }); } catch (e) { console.error("upsert master (create) err:", e); }
+    await recordUserActivity(req.user, "invoice_created", { entityId: newInvoice._id,
+      customerCode: newInvoice.invoiceNumber, message: `Thêm hóa đơn ${newInvoice.invoiceNumber} — ${newInvoice.customerName}.`,
+      details: { billingPeriod: newInvoice.billing_period, totalAmount: newInvoice.totalAmount } });
 
     // ✅ Phản hồi chuẩn REST
     return res.status(201).json({
@@ -607,28 +613,10 @@ export const updateInvoice = async (req: Request, res: Response) => {
       assignedTo,
       recordBookCode,
       billing_period,
-    } = req.body.formData;
+    } = req.body?.formData || {};
     const { invoiceId } = req.params;
 
-    console.log("=== UPDATE INVOICE DEBUG ===");
-    console.log("req.params:", req.params);
-    console.log("req.body:", req.body);
-    console.log("req.body.formData:", req.body.formData);
-
-    const resolvedAmounts = resolveInvoiceAmounts({
-      currentAmount,
-      previousAmount,
-      totalAmount,
-    });
-
-    // billing_period có thể rỗng khi cập nhật (giữ nguyên kỳ cũ)
-    if (!invoiceId || !customerName || !resolvedAmounts.hasAnyAmount) {
-      console.log("=== VALIDATION FAILED ===");
-      console.log("invoiceId:", invoiceId);
-      console.log("customerName:", customerName);
-      console.log("normalizedCurrentAmount:", resolvedAmounts.currentAmount);
-      console.log("normalizedPreviousAmount:", resolvedAmounts.previousAmount);
-      console.log("billing_period:", billing_period);
+    if (!invoiceId) {
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc." });
     }
 
@@ -639,24 +627,37 @@ export const updateInvoice = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Không tìm thấy hoá đơn." });
     }
 
+    if (!ownsRecord(user, invoice)) {
+      return res.status(403).json({ message: "Bạn chỉ được sửa hóa đơn do mình phụ trách." });
+    }
+    if (user.role !== "admin" && assignedTo && String(assignedTo) !== String(user._id)) {
+      return res.status(403).json({ message: "Bạn không được chuyển hóa đơn cho tài khoản khác." });
+    }
+    const resolvedAmounts = resolveInvoiceAmounts({
+      currentAmount: currentAmount ?? invoice.currentAmount,
+      previousAmount: previousAmount ?? invoice.previousAmount,
+      totalAmount,
+    });
+
     // Xác định người phụ trách:
     // - Nếu request gửi assignedTo tường minh -> dùng giá trị đó.
     // - Ngược lại, nếu user hiện tại không phải admin -> gán cho user hiện tại.
     // - Nếu user hiện tại là admin -> GIỮ nguyên người phụ trách hiện tại.
     const isAdmin = user.role === "admin";
     let finalAssignedTo: any;
-    if (assignedTo !== undefined && assignedTo !== null && assignedTo !== "") {
+    if (!isAdmin) {
+      finalAssignedTo = user._id;
+    } else if (assignedTo !== undefined && assignedTo !== null && assignedTo !== "") {
       finalAssignedTo = assignedTo;
-    } else if (!isAdmin) {
-      finalAssignedTo = req.user?._id;
     } else {
       finalAssignedTo = invoice.assignedTo;
     }
 
+    const before = invoice.toObject();
     // Cập nhật hoá đơn
-    invoice.customerName = customerName;
-    invoice.customerPhone = customerPhone || "";
-    invoice.customerAddress = customerAddress || "";
+    invoice.customerName = String(customerName ?? invoice.customerName ?? invoice.invoiceNumber ?? "Khách hàng chưa cập nhật").trim();
+    invoice.customerPhone = String(customerPhone ?? invoice.customerPhone ?? "").trim();
+    invoice.customerAddress = String(customerAddress ?? invoice.customerAddress ?? "").trim();
     invoice.currentAmount = resolvedAmounts.currentAmount;
     invoice.previousAmount = resolvedAmounts.previousAmount;
     invoice.totalAmount = resolvedAmounts.totalAmount;
@@ -665,13 +666,23 @@ export const updateInvoice = async (req: Request, res: Response) => {
     // Chỉ cập nhật billing_period nếu có giá trị mới hợp lệ, giữ nguyên nếu không
     invoice.billing_period = billing_period ?? invoice.billing_period;
     invoice.note = note !== undefined ? note : invoice.note;
-    invoice.recordBookCode = normalizeRecordBookCode(recordBookCode);
+    invoice.recordBookCode = recordBookCode !== undefined ? normalizeRecordBookCode(recordBookCode) : invoice.recordBookCode;
 
-    // console.log(invoice);
-
-    await invoice.save();
-
-    return res.status(200).json({ message: "Cập nhật hoá đơn thành công.", invoice });
+    const updated = await Invoice.findOneAndUpdate(
+      { _id: invoice._id, ...(!isAdmin ? { assignedTo: user._id } : {}) },
+      { $set: { customerName: invoice.customerName, customerAddress: invoice.customerAddress,
+        customerPhone: invoice.customerPhone, currentAmount: invoice.currentAmount, previousAmount: invoice.previousAmount,
+        totalAmount: invoice.totalAmount, assignedTo: invoice.assignedTo, updateBy: invoice.updateBy,
+        billing_period: invoice.billing_period, note: invoice.note, recordBookCode: invoice.recordBookCode } },
+      { new: true, runValidators: true }
+    );
+    if (!updated) return res.status(403).json({ message: "Hóa đơn không còn thuộc phạm vi của bạn." });
+    try { await upsertCustomerMasterFromInvoice(updated.toObject(), { force: true, actor: user }); }
+    catch (error) { console.error("upsert master (update):", error); }
+    const changes = activityChanges(before, updated.toObject());
+    if (changes.length) await recordUserActivity(user, "invoice_updated", { entityId: updated._id,
+      customerCode: updated.invoiceNumber, message: `Chỉnh sửa hóa đơn ${updated.invoiceNumber} — ${updated.customerName}.`, changes });
+    return res.status(200).json({ message: "Cập nhật hoá đơn thành công.", invoice: updated });
   } catch (error) {
     console.error("Lỗi khi cập nhật hoá đơn:", error);
     return res.status(500).json({ message: "Lỗi server khi cập nhật hoá đơn." });
@@ -771,6 +782,7 @@ export const deleteByBillingPeriod = async (req: Request, res: Response) => {
 
 // ✅ Thêm hóa đơn nhanh (Quick Add Invoice)
 export const quickAddInvoice = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Chưa đăng nhập." });
   try {
     const { invoiceNumber, customerName, totalAmount, recordBookCode } = req.body;
 
@@ -810,6 +822,10 @@ export const quickAddInvoice = async (req: Request, res: Response) => {
 
     await newInvoice.save();
 
+    try { await upsertCustomerMasterFromInvoice(newInvoice.toObject(), { actor: req.user }); }
+    catch (error) { console.error("upsert master (quick add):", error); }
+    await recordUserActivity(req.user, "invoice_created", { entityId: newInvoice._id, customerCode: newInvoice.invoiceNumber,
+      message: `Thêm nhanh hóa đơn ${newInvoice.invoiceNumber} — ${newInvoice.customerName}.`, details: { billingPeriod: billing_period, totalAmount: newInvoice.totalAmount } });
     return res.status(201).json({
       message: "Thêm hóa đơn thành công!",
       invoice: newInvoice,
