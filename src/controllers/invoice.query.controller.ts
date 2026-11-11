@@ -1779,7 +1779,7 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
 export const getDailyCollectionSummary = async (req: Request, res: Response) => {
   try {
     const TZ = "Asia/Ho_Chi_Minh";
-    const { assignedUserId, dateFrom, dateTo } = req.query;
+    const { assignedUserId, assignedUserIds, dateFrom, dateTo } = req.query;
 
     // Chế độ khoảng ngày tuỳ chọn vs. N ngày gần nhất
     let startDay: dayjs.Dayjs;
@@ -1807,6 +1807,15 @@ export const getDailyCollectionSummary = async (req: Request, res: Response) => 
     // Phân quyền
     if (req.user?.role === "user") {
       match.assignedTo = req.user._id;
+    } else if (assignedUserIds !== undefined) {
+      if (typeof assignedUserIds !== "string") {
+        return res.status(400).json({ message: "assignedUserIds không hợp lệ" });
+      }
+      const ids = [...new Set(assignedUserIds.split(",").map((id) => id.trim()))];
+      if (ids.length === 0 || ids.some((id) => !/^[a-fA-F0-9]{24}$/.test(id))) {
+        return res.status(400).json({ message: "Chọn ít nhất một người phụ trách hợp lệ" });
+      }
+      match.assignedTo = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
     } else if (assignedUserId && assignedUserId !== "all") {
       // Admin lọc theo người phụ trách cụ thể
       try {
